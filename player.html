@@ -179,10 +179,14 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
-const SUPABASE_URL = 'YOUR_SUPABASE_URL';
-const SUPABASE_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const _hash = new URLSearchParams(window.location.hash.slice(1));
+const SUPABASE_URL = _hash.get('url') || '';
+const SUPABASE_KEY = _hash.get('key') || '';
 const ROOM = 'townhall2025';
-
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;text-align:center;padding:2rem;font-family:\'DM Sans\',sans-serif;color:#c0392b;font-size:1rem;">Link inválido.<br><br>Pede ao admin para gerar o QR code novamente.</div>';
+  throw new Error('missing credentials in URL hash');
+}
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let myId = null, myName = '', myScore = 0, currentRound = 0, answered = false;

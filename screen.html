@@ -161,12 +161,16 @@ canvas#game-canvas { width: 100%; height: 100%; display: block; }
   <div class="podium-wrap" id="podium-wrap"></div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
-const SUPABASE_URL = 'YOUR_SUPABASE_URL';
-const SUPABASE_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const SUPABASE_URL = localStorage.getItem('sb_url') || '';
+const SUPABASE_KEY = localStorage.getItem('sb_key') || '';
 const ROOM = 'townhall2025';
-
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:\'DM Mono\',monospace;font-size:0.9rem;color:#c0392b;text-align:center;padding:2rem;">Abre o admin.html no mesmo browser e liga ao Supabase primeiro.</div>';
+  throw new Error('missing credentials');
+}
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const channel = sb.channel(ROOM, { config: { broadcast: { self: false }, presence: { key: 'screen' } } });
 
@@ -184,9 +188,13 @@ function showPhase(p) {
   });
 }
 
-// ── Player URL (replace with hosted URL)
-const playerURL = window.location.href.replace('screen.html','player.html');
+// ── Player URL com credenciais no hash (nunca vai ao servidor)
+const playerURL = window.location.href.replace('screen.html','player.html') +
+  '#url=' + encodeURIComponent(SUPABASE_URL) + '&key=' + encodeURIComponent(SUPABASE_KEY);
 $('player-url').textContent = playerURL;
+QRCode.toCanvas(document.createElement('canvas'), playerURL, { width: 160, margin: 1 }, (err, c) => {
+  if (!err) { const box = $('qr-display'); box.innerHTML = ''; box.style.padding = '10px'; box.appendChild(c); }
+});
 
 // ── Leaderboard render
 function renderLeaderboard() {

@@ -64,6 +64,7 @@ h1 { font-size: 1.3rem; font-weight: 700; color: var(--green); margin-bottom: 0.
     <button class="btn btn-green" onclick="connect()">Ligar</button>
   </div>
   <div id="conn-status" style="font-size:0.8rem;color:var(--muted);font-family:'DM Mono',monospace;">Não ligado</div>
+  <div id="player-link" style="display:none;margin-top:0.75rem;font-size:0.72rem;font-family:'DM Mono',monospace;color:var(--muted);word-break:break-all;line-height:1.6;"></div>
 </div>
 
 <div class="card">
@@ -129,6 +130,11 @@ function connect() {
         $('conn-status').style.color = 'var(--green)';
         log('Ligado ao canal: ' + ROOM);
         ['btn-start-quiz','btn-start-game','btn-reset'].forEach(id => $(id).disabled = false);
+        const playerURL = window.location.href.replace('admin.html','player.html') +
+          '#url=' + encodeURIComponent(url) + '&key=' + encodeURIComponent(key);
+        const linkEl = $('player-link');
+        linkEl.style.display = 'block';
+        linkEl.innerHTML = `Link para jogadores (no QR do ecrã):<br><span style="color:var(--green);user-select:all;">${playerURL}</span>`;
       }
     });
 }
