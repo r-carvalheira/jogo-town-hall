@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Town Hall — Jogador</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f5f6f3; --surface: #fff; --surface2: #eef0eb;
+  --border: rgba(0,0,0,0.09); --green: #1a6644; --green2: #228c5a;
+  --text: #1a2b1f; --muted: #6b856f; --danger: #c0392b; --gold: #f5a623;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; }
+
+.screen { display: none; min-height: 100vh; flex-direction: column; align-items: center; justify-content: center; padding: 2rem 1.5rem; gap: 1.5rem; }
+.screen.active { display: flex; }
+
+/* ─── REGISTER ─── */
+.reg-title { font-size: 1.8rem; font-weight: 700; color: var(--green); text-align: center; }
+.reg-sub { color: var(--muted); font-size: 0.9rem; text-align: center; font-family: 'DM Mono', monospace; }
+.reg-input {
+  width: 100%; padding: 16px; border-radius: 12px; border: 2px solid var(--border);
+  background: var(--surface); font-family: 'DM Sans', sans-serif; font-size: 1.1rem;
+  outline: none; text-align: center; transition: border-color 0.2s;
+}
+.reg-input:focus { border-color: var(--green); }
+.btn {
+  width: 100%; padding: 16px; border-radius: 12px; border: none;
+  background: var(--green); color: #fff; font-family: 'DM Sans', sans-serif;
+  font-size: 1rem; font-weight: 700; cursor: pointer; transition: opacity 0.2s;
+}
+.btn:active { opacity: 0.8; }
+.btn:disabled { opacity: 0.4; cursor: default; }
+
+/* ─── WAITING ROOM ─── */
+.wait-icon { font-size: 3rem; }
+.wait-title { font-size: 1.3rem; font-weight: 700; color: var(--green); text-align: center; }
+.wait-name { font-size: 1rem; color: var(--muted); font-family: 'DM Mono', monospace; }
+.wait-anim {
+  display: flex; gap: 6px;
+}
+.wait-anim span {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+  animation: wb 1.2s infinite;
+}
+.wait-anim span:nth-child(2) { animation-delay: 0.2s; }
+.wait-anim span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes wb { 0%,80%,100%{opacity:0.2;transform:scale(0.8)} 40%{opacity:1;transform:scale(1)} }
+
+/* ─── QUIZ ─── */
+.quiz-wrap { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 1.2rem; }
+.q-progress { height: 4px; background: var(--surface2); border-radius: 2px; }
+.q-fill { height: 100%; background: var(--green); border-radius: 2px; transition: width 0.4s; }
+.q-round { font-size: 0.75rem; font-family: 'DM Mono', monospace; color: var(--muted); text-align: center; }
+.q-text { font-size: 1.05rem; font-weight: 700; text-align: center; line-height: 1.5; color: var(--text); }
+.q-label { font-size: 0.8rem; color: var(--muted); text-align: center; font-family: 'DM Mono', monospace; }
+.options { display: flex; flex-direction: column; gap: 10px; }
+.opt {
+  padding: 14px 16px; border-radius: 12px; border: 1.5px solid var(--border);
+  background: var(--surface); font-family: 'DM Sans', sans-serif; font-size: 0.92rem;
+  cursor: pointer; transition: all 0.18s; color: var(--text); text-align: left;
+  display: flex; align-items: center; gap: 10px;
+}
+.opt:active:not(:disabled) { transform: scale(0.98); }
+.opt:hover:not(:disabled) { border-color: var(--green); }
+.opt .opt-l {
+  width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'DM Mono', monospace; font-size: 0.7rem; color: var(--muted); flex-shrink: 0;
+}
+.opt.correct { border-color: var(--green2); background: #e8f4ee; }
+.opt.correct .opt-l { background: var(--green); border-color: var(--green); color: #fff; }
+.opt.wrong { border-color: var(--danger); background: #fdecea; }
+.opt.wrong .opt-l { background: var(--danger); border-color: var(--danger); color: #fff; }
+.opt:disabled { cursor: default; }
+.q-feedback { font-size: 0.85rem; text-align: center; color: var(--muted); min-height: 2rem; line-height: 1.4; }
+.score-display {
+  text-align: center; font-family: 'DM Mono', monospace; font-size: 0.85rem; color: var(--muted);
+}
+.score-display span { color: var(--green); font-size: 1.1rem; font-weight: 500; }
+
+/* ─── NOT FINALIST ─── */
+.nf-score { font-size: 3rem; font-weight: 700; color: var(--green); }
+.nf-label { font-size: 0.85rem; font-family: 'DM Mono', monospace; color: var(--muted); }
+
+/* ─── TILT CONTROLLER ─── */
+#screen-controller {
+  display: none; position: fixed; inset: 0; background: #0d1a0f; color: #eef5f0;
+  flex-direction: column; align-items: center; justify-content: center; gap: 1.5rem;
+}
+#screen-controller.active { display: flex; }
+.ctrl-name { font-size: 1.4rem; font-weight: 700; color: #eef5f0; }
+.ctrl-label { font-size: 0.8rem; font-family: 'DM Mono', monospace; color: rgba(255,255,255,0.5); text-align: center; }
+.tilt-viz {
+  width: 200px; height: 200px; border: 2px solid rgba(255,255,255,0.15);
+  border-radius: 50%; position: relative; background: rgba(255,255,255,0.03);
+}
+.tilt-dot {
+  width: 36px; height: 36px; border-radius: 50%; background: var(--gold);
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  transition: left 0.08s ease;
+}
+.tilt-bar-wrap {
+  width: 240px; height: 16px; background: rgba(255,255,255,0.1);
+  border-radius: 8px; position: relative; overflow: visible;
+}
+.tilt-bar-indicator {
+  width: 28px; height: 28px; border-radius: 50%; background: var(--gold);
+  position: absolute; top: 50%; transform: translateY(-50%); transition: left 0.08s ease;
+}
+.ctrl-status { font-size: 0.85rem; font-family: 'DM Mono', monospace; color: rgba(255,255,255,0.4); }
+.rotate-hint {
+  font-size: 0.85rem; font-family: 'DM Mono', monospace; color: rgba(255,255,255,0.5);
+  text-align: center; padding: 0.5rem 1rem; border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px; max-width: 260px;
+}
+.grant-btn {
+  padding: 14px 32px; border-radius: 12px; border: none; background: var(--gold);
+  color: #1a2b1f; font-family: 'DM Sans', sans-serif; font-weight: 700; font-size: 1rem;
+  cursor: pointer;
+}
+</style>
+</head>
+<body>
+
+<!-- REGISTER -->
+<div class="screen active" id="screen-register">
+  <div class="reg-title">Olá! 👋</div>
+  <div class="reg-sub">Escreve o teu nome para entrar no quiz</div>
+  <input class="reg-input" id="name-input" type="text" placeholder="O teu nome..." maxlength="20" />
+  <button class="btn" id="join-btn" onclick="joinGame()">Entrar no jogo</button>
+</div>
+
+<!-- WAITING ROOM -->
+<div class="screen" id="screen-wait">
+  <div class="wait-icon">🎸</div>
+  <div class="wait-title">Estás dentro!</div>
+  <div class="wait-name" id="wait-name"></div>
+  <div class="wait-anim"><span></span><span></span><span></span></div>
+  <div style="font-size:0.85rem;color:var(--muted);text-align:center;">A aguardar que o quiz comece...</div>
+</div>
+
+<!-- QUIZ -->
+<div class="screen" id="screen-quiz">
+  <div class="quiz-wrap">
+    <div class="q-progress"><div class="q-fill" id="q-fill" style="width:0%"></div></div>
+    <div class="q-round" id="q-round">Ronda 1 de 6</div>
+    <div class="q-text" id="q-text">Qual é a verdadeira?</div>
+    <div class="q-label">Escolhe a afirmação verdadeira</div>
+    <div class="options" id="options"></div>
+    <div class="q-feedback" id="q-feedback"></div>
+    <div class="score-display">Pontos: <span id="score-disp">0</span></div>
+  </div>
+</div>
+
+<!-- NOT A FINALIST -->
+<div class="screen" id="screen-done">
+  <div class="nf-score" id="done-score">0</div>
+  <div class="nf-label">pontos</div>
+  <div style="font-size:1.1rem;font-weight:700;color:var(--text);margin-top:0.5rem;" id="done-msg"></div>
+  <div style="font-size:0.85rem;color:var(--muted);text-align:center;margin-top:0.5rem;">
+    Segue o jogo no ecrã principal!
+  </div>
+</div>
+
+<!-- TILT CONTROLLER -->
+<div id="screen-controller">
+  <div class="ctrl-name" id="ctrl-name"></div>
+  <div class="rotate-hint">📱 Deita o telemóvel para o lado e inclina para guiar o barco</div>
+  <div class="tilt-bar-wrap">
+    <div class="tilt-bar-indicator" id="tilt-indicator" style="left:calc(50% - 14px)"></div>
+  </div>
+  <div class="ctrl-label">← esquerda &nbsp;&nbsp; direita →</div>
+  <button class="grant-btn" id="grant-btn" onclick="requestMotion()">Activar giroscópio</button>
+  <div class="ctrl-status" id="ctrl-status">A aguardar permissão...</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+const SUPABASE_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const ROOM = 'townhall2025';
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let myId = null, myName = '', myScore = 0, currentRound = 0, answered = false;
+let isFinalist = false;
+let channel = null;
+
+const $ = id => document.getElementById(id);
+
+function uid() { return Math.random().toString(36).slice(2,10); }
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  $(id)?.classList.add('active');
+  $('screen-controller').classList.remove('active');
+}
+
+function showController() {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  $('screen-controller').classList.add('active');
+}
+
+// ── Rounds data (same as screen)
+const rounds = [
+  { trueIdx:2, options:["O Rodrigo começou a faculdade em 2019.","O Rodrigo fez o secundário numa escola de artes.","O Rodrigo trabalhou como bartender.","O Rodrigo tem um irmão gémeo."] },
+  { trueIdx:0, options:["O Rodrigo deu aulas de guitarra quando estava no 8.º ano.","O Rodrigo chegou a tocar numa banda de covers nos festivais de verão.","O Rodrigo sabe tocar baixo e bateria além de guitarra.","O Rodrigo já gravou um EP num estúdio profissional."] },
+  { trueIdx:1, options:["O Rodrigo já visitou os 5 continentes.","O Rodrigo já esteve em África, nas Américas e na Ásia.","O Rodrigo viveu 6 meses no estrangeiro como nómada digital.","O Rodrigo fez o Interrail sozinho com 17 anos."] },
+  { trueIdx:3, options:["O Rodrigo é vegano há 2 anos.","O Rodrigo pratica surf ao fim de semana.","O Rodrigo tem certificação AWS.","O Rodrigo está na Tuna Universitária da NOVA IMS."] },
+  { trueIdx:0, options:["O Rodrigo bebe café todos os dias.","O Rodrigo nunca bebeu álcool na vida.","O Rodrigo acorda sempre antes das 7h.","O Rodrigo é vegetariano."] },
+  { trueIdx:2, options:["O Rodrigo sabe falar mandarim básico.","O Rodrigo já participou num hackathon internacional.","O Rodrigo está a construir agentes de IA com Copilot Studio e Databricks.","O Rodrigo tem o seu próprio podcast de tecnologia."] }
+];
+
+const feedbacks = [
+  "Sim, é verdade! Trabalhou como bartender. 🍹","Verdade! Com 13-14 anos já era professor de guitarra. 🎸",
+  "Correto! 3 continentes além da Europa. ✈️","Sim! Membro da Tuna desde 2022. 🎻",
+  "Óbvio! O café é um requisito de funcionamento. ☕","É mesmo! Agentes de IA no dia a dia do estágio. 🤖"
+];
+
+function joinGame() {
+  const name = $('name-input').value.trim();
+  if (!name) return;
+  myId = uid();
+  myName = name;
+  $('join-btn').disabled = true;
+
+  channel = sb.channel(ROOM, { config: { broadcast: { self: false } } });
+  channel
+    .on('broadcast', { event: 'phase' }, ({ payload }) => {
+      handlePhase(payload);
+    })
+    .subscribe(() => {
+      channel.send({ type:'broadcast', event:'join', payload:{ id:myId, name:myName } });
+      $('wait-name').textContent = myName;
+      showScreen('screen-wait');
+    });
+}
+
+function handlePhase(payload) {
+  if (payload.phase === 'quiz') {
+    currentRound = 0;
+    myScore = 0;
+    showScreen('screen-quiz');
+    loadRound(0);
+  } else if (payload.phase === 'quiz_done') {
+    const finalistIds = payload.finalists || [];
+    isFinalist = finalistIds.includes(myId);
+    if (!isFinalist) {
+      $('done-score').textContent = myScore;
+      $('done-msg').textContent = myScore >= 4 ? 'Muito bem!' : myScore >= 2 ? 'Boa tentativa!' : 'Para a próxima! 😄';
+      showScreen('screen-done');
+    }
+  } else if (payload.phase === 'game') {
+    const finalists = payload.finalists || [];
+    const me = finalists.find(f => f.id === myId);
+    if (me) {
+      isFinalist = true;
+      $('ctrl-name').textContent = me.name;
+      showController();
+    }
+  }
+}
+
+function loadRound(idx) {
+  if (idx >= rounds.length) { finishQuiz(); return; }
+  const r = rounds[idx];
+  answered = false;
+  $('q-round').textContent = `Ronda ${idx+1} de ${rounds.length}`;
+  $('q-fill').style.width = `${((idx)/rounds.length)*100}%`;
+  $('q-text').textContent = 'Qual destas afirmações é verdadeira?';
+  $('q-feedback').textContent = '';
+  $('score-disp').textContent = myScore;
+  const labels = ['A','B','C','D'];
+  const opts = $('options');
+  opts.innerHTML = '';
+  r.options.forEach((opt, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'opt';
+    btn.innerHTML = `<span class="opt-l">${labels[i]}</span>${opt}`;
+    btn.onclick = () => selectAnswer(i, idx);
+    opts.appendChild(btn);
+  });
+}
+
+function selectAnswer(chosen, roundIdx) {
+  if (answered) return;
+  answered = true;
+  const r = rounds[roundIdx];
+  const btns = document.querySelectorAll('.opt');
+  btns.forEach(b => b.disabled = true);
+  const correct = chosen === r.trueIdx;
+  if (correct) myScore++;
+  btns[r.trueIdx].classList.add('correct');
+  if (!correct) btns[chosen].classList.add('wrong');
+  $('q-feedback').textContent = (correct ? '✓ ' : '✗ ') + feedbacks[roundIdx];
+  $('q-feedback').style.color = correct ? 'var(--green2)' : 'var(--danger)';
+  $('score-disp').textContent = myScore;
+  // send score update
+  const finished = roundIdx === rounds.length - 1;
+  channel.send({ type:'broadcast', event:'score', payload:{ id:myId, name:myName, score:myScore, finished } });
+  setTimeout(() => {
+    if (roundIdx < rounds.length - 1) loadRound(roundIdx + 1);
+    else finishQuiz();
+  }, 1800);
+}
+
+function finishQuiz() {
+  $('q-fill').style.width = '100%';
+  // Send final score
+  channel.send({ type:'broadcast', event:'score', payload:{ id:myId, name:myName, score:myScore, finished:true } });
+}
+
+// ── TILT CONTROLLER
+let tiltInterval = null;
+let motionGranted = false;
+
+function requestMotion() {
+  if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+    DeviceMotionEvent.requestPermission().then(state => {
+      if (state === 'granted') activateTilt();
+      else $('ctrl-status').textContent = 'Permissão negada. Tenta nas definições do Safari.';
+    }).catch(() => $('ctrl-status').textContent = 'Erro ao pedir permissão.');
+  } else {
+    activateTilt();
+  }
+}
+
+function activateTilt() {
+  motionGranted = true;
+  $('grant-btn').style.display = 'none';
+  $('ctrl-status').textContent = 'Giroscópio ativo — inclina para guiar!';
+
+  // landscape lock hint
+  if (screen.orientation && screen.orientation.lock) {
+    screen.orientation.lock('landscape').catch(()=>{});
+  }
+
+  window.addEventListener('deviceorientation', e => {
+    const gamma = e.gamma || 0; // -90 to 90, tilt left/right in portrait
+    const tilt = Math.max(-1, Math.min(1, gamma / 45));
+    const pct = (tilt + 1) / 2;
+    $('tilt-indicator').style.left = `calc(${pct * 100}% - 14px)`;
+    // send tilt
+    channel.send({ type:'broadcast', event:'tilt', payload:{ id:myId, tilt } });
+  });
+}
+
+$('name-input').addEventListener('keydown', e => { if(e.key==='Enter') joinGame(); });
+</script>
+</body>
+</html>

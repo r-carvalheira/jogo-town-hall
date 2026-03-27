@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — Town Hall</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f5f6f3; --surface: #fff; --border: rgba(0,0,0,0.09);
+  --green: #1a6644; --green2: #228c5a; --text: #1a2b1f; --muted: #6b856f;
+  --danger: #c0392b; --gold: #f5a623;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; padding: 2rem; min-height: 100vh; }
+h1 { font-size: 1.3rem; font-weight: 700; color: var(--green); margin-bottom: 0.25rem; }
+.sub { font-size: 0.8rem; color: var(--muted); font-family: 'DM Mono', monospace; margin-bottom: 2rem; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 1.5rem; margin-bottom: 1rem; }
+.card h2 { font-size: 0.75rem; font-family: 'DM Mono', monospace; color: var(--green); letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 1rem; }
+.btn {
+  padding: 12px 24px; border-radius: 10px; border: none; cursor: pointer;
+  font-family: 'DM Sans', sans-serif; font-weight: 700; font-size: 0.95rem; transition: opacity 0.2s;
+}
+.btn:hover { opacity: 0.85; }
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn-green { background: var(--green); color: #fff; }
+.btn-gold { background: var(--gold); color: #1a2b1f; }
+.btn-red { background: var(--danger); color: #fff; }
+.btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.phase-indicator {
+  display: inline-block; padding: 4px 14px; border-radius: 999px;
+  background: var(--green); color: #fff; font-family: 'DM Mono', monospace;
+  font-size: 0.8rem; margin-bottom: 1rem;
+}
+.log {
+  background: #1a2b1f; color: #a8c4a8; font-family: 'DM Mono', monospace;
+  font-size: 0.78rem; border-radius: 10px; padding: 1rem; height: 180px; overflow-y: auto;
+  white-space: pre-wrap; line-height: 1.6;
+}
+.players-list { display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; }
+.player-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; background: var(--bg); border-radius: 8px;
+  font-size: 0.85rem;
+}
+.player-score { font-family: 'DM Mono', monospace; font-weight: 500; color: var(--green); }
+.input-row { display: flex; gap: 10px; margin-bottom: 1rem; }
+.input-row input {
+  flex: 1; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--bg); font-family: 'DM Mono', monospace; font-size: 0.85rem; outline: none;
+}
+.input-row input:focus { border-color: var(--green); }
+</style>
+</head>
+<body>
+<h1>🎛️ Admin — Town Hall</h1>
+<div class="sub">Painel de controlo. Abre o screen.html no ecrã principal.</div>
+
+<div class="card">
+  <h2>Configuração Supabase</h2>
+  <div class="input-row">
+    <input type="text" id="sb-url" placeholder="https://xxxx.supabase.co" />
+    <input type="text" id="sb-key" placeholder="anon key..." />
+    <button class="btn btn-green" onclick="connect()">Ligar</button>
+  </div>
+  <div id="conn-status" style="font-size:0.8rem;color:var(--muted);font-family:'DM Mono',monospace;">Não ligado</div>
+</div>
+
+<div class="card">
+  <h2>Fase atual</h2>
+  <div class="phase-indicator" id="phase-badge">waiting</div>
+  <div class="btn-row">
+    <button class="btn btn-green" id="btn-start-quiz" onclick="sendPhase('quiz')" disabled>▶ Iniciar Quiz</button>
+    <button class="btn btn-gold" id="btn-start-game" onclick="sendPhase('game')" disabled>🏁 Iniciar Jogo Final</button>
+    <button class="btn btn-red" id="btn-reset" onclick="sendPhase('waiting')" disabled>↺ Reset</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Jogadores (<span id="player-count">0</span>)</h2>
+  <div class="players-list" id="players-list">
+    <div style="font-size:0.85rem;color:var(--muted);">Nenhum jogador ainda...</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Log</h2>
+  <div class="log" id="log">Aguarda ligação ao Supabase...\n</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+let sb, channel;
+let players = {};
+const ROOM = 'townhall2025';
+const $ = id => document.getElementById(id);
+
+function log(msg) {
+  const el = $('log');
+  el.textContent += `[${new Date().toLocaleTimeString('pt-PT')}] ${msg}\n`;
+  el.scrollTop = el.scrollHeight;
+}
+
+function connect() {
+  const url = $('sb-url').value.trim();
+  const key = $('sb-key').value.trim();
+  if (!url || !key) { log('ERRO: preenche URL e key'); return; }
+
+  // Save for screen/player pages
+  localStorage.setItem('sb_url', url);
+  localStorage.setItem('sb_key', key);
+
+  sb = supabase.createClient(url, key);
+  channel = sb.channel(ROOM, { config: { broadcast: { self: true } } });
+
+  channel
+    .on('broadcast', { event: 'join' }, ({ payload }) => {
+      players[payload.id] = { name: payload.name, score: 0 };
+      log(`JOIN: ${payload.name}`);
+      renderPlayers();
+    })
+    .on('broadcast', { event: 'score' }, ({ payload }) => {
+      if (players[payload.id]) players[payload.id].score = payload.score;
+      renderPlayers();
+    })
+    .subscribe(status => {
+      if (status === 'SUBSCRIBED') {
+        $('conn-status').textContent = '✓ Ligado ao Supabase';
+        $('conn-status').style.color = 'var(--green)';
+        log('Ligado ao canal: ' + ROOM);
+        ['btn-start-quiz','btn-start-game','btn-reset'].forEach(id => $(id).disabled = false);
+      }
+    });
+}
+
+function sendPhase(phase) {
+  if (!channel) { log('ERRO: não ligado'); return; }
+
+  let payload = { phase };
+
+  if (phase === 'game') {
+    const sorted = Object.entries(players).sort((a,b)=>b[1].score-a[1].score);
+    const finalists = sorted.slice(0,5).map(([id,p])=>({ id, name:p.name }));
+    payload.finalists = finalists;
+    log('Finalistas: ' + finalists.map(f=>f.name).join(', '));
+  }
+
+  channel.send({ type:'broadcast', event:'phase', payload });
+  $('phase-badge').textContent = phase;
+  log(`FASE: ${phase}`);
+
+  if (phase === 'waiting') { players = {}; renderPlayers(); }
+}
+
+function renderPlayers() {
+  const sorted = Object.entries(players).sort((a,b)=>b[1].score-a[1].score);
+  $('player-count').textContent = sorted.length;
+  const list = $('players-list');
+  if (sorted.length === 0) {
+    list.innerHTML = '<div style="font-size:0.85rem;color:var(--muted);">Nenhum jogador ainda...</div>';
+    return;
+  }
+  list.innerHTML = sorted.map(([id,p], i) => `
+    <div class="player-row">
+      <span>#${i+1} ${p.name}</span>
+      <span class="player-score">${p.score} pts</span>
+    </div>
+  `).join('');
+}
+
+// Auto-connect from localStorage
+window.addEventListener('load', () => {
+  const url = localStorage.getItem('sb_url');
+  const key = localStorage.getItem('sb_key');
+  if (url && key) {
+    $('sb-url').value = url;
+    $('sb-key').value = key;
+  }
+});
+</script>
+</body>
+</html>
