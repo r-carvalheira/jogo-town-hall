@@ -192,8 +192,11 @@ function showPhase(p) {
 const playerURL = window.location.href.replace('screen.html','player.html') +
   '#url=' + encodeURIComponent(SUPABASE_URL) + '&key=' + encodeURIComponent(SUPABASE_KEY);
 $('player-url').textContent = playerURL;
-QRCode.toCanvas(document.createElement('canvas'), playerURL, { width: 160, margin: 1 }, (err, c) => {
-  if (!err) { const box = $('qr-display'); box.innerHTML = ''; box.style.padding = '10px'; box.appendChild(c); }
+QRCode.toDataURL(playerURL, { width: 160, margin: 1, color: { dark: '#1a2b1f', light: '#ffffff' } }, (err, dataUrl) => {
+  if (!err) {
+    const box = $('qr-display');
+    box.innerHTML = `<img src="${dataUrl}" style="width:160px;height:160px;border-radius:8px;">`;
+  }
 });
 
 // ── Leaderboard render
@@ -252,6 +255,20 @@ channel
     if (gameState.boats) {
       const boat = gameState.boats.find(b => b.id === payload.id);
       if (boat) boat.targetTilt = Math.max(-1, Math.min(1, payload.tilt));
+    }
+  })
+  .on('broadcast', { event: 'phase' }, ({ payload }) => {
+    if (payload.phase === 'quiz') {
+      showPhase('quiz');
+    } else if (payload.phase === 'game') {
+      const sorted = Object.values(players).sort((a,b) => b.score - a.score);
+      const finalists = sorted.slice(0, 5);
+      showPhase('game');
+      initGame(finalists);
+    } else if (payload.phase === 'waiting') {
+      players = {};
+      showPhase('waiting');
+      renderWaiting();
     }
   })
   .subscribe();
