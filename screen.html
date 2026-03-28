@@ -265,15 +265,20 @@ channel
     if (payload.phase === 'quiz') {
       showPhase('quiz');
     } else if (payload.phase === 'game') {
-      const sorted = Object.values(players).sort((a,b) => b.score - a.score);
-      const finalists = sorted.slice(0, 5);
-      showPhase('game');
-      initGame(finalists);
+      const finalists = payload.finalists;
+      if (finalists && finalists.length) { showPhase('game'); initGame(finalists); }
     } else if (payload.phase === 'waiting') {
       players = {};
       showPhase('waiting');
       renderWaiting();
     }
+  })
+  .on('presence', { event: 'leave' }, ({ leftPresences }) => {
+    leftPresences.filter(p => p.type === 'player').forEach(p => {
+      delete players[p.id];
+    });
+    renderLeaderboard();
+    if (phase === 'waiting') renderWaiting();
   })
   .on('presence', { event: 'sync' }, () => {
     const all = Object.values(channel.presenceState()).flat();
@@ -289,9 +294,8 @@ channel
       if (admin && admin.phase === 'quiz') {
         showPhase('quiz');
       } else if (admin && admin.phase === 'game') {
-        const sorted = Object.values(players).sort((a, b) => b.score - a.score);
         showPhase('game');
-        initGame(sorted.slice(0, 5));
+        if (admin.finalists && admin.finalists.length) initGame(admin.finalists);
       }
     }
   })
@@ -299,20 +303,19 @@ channel
 
 // ── Phase transitions
 function showFinalists() {
-  const sorted = Object.values(players).sort((a,b)=>b.score-a.score);
-  const finalists = sorted.slice(0,5);
+  const sorted = Object.entries(players).sort(([,a],[,b]) => b.score - a.score);
+  const finalists = sorted.slice(0,5).map(([id,p]) => ({ id, name:p.name }));
   const banner = $('finalist-banner');
-  banner.textContent = '🏁 Finalistas: ' + finalists.map(p=>p.name).join('  ·  ');
+  banner.textContent = '🏁 Finalistas: ' + finalists.map(f=>f.name).join('  ·  ');
   banner.style.display = 'block';
-  // notify players
-  channel.send({ type:'broadcast', event:'phase', payload:{ phase:'quiz_done', finalists: finalists.map(p=>p.id) } });
+  channel.send({ type:'broadcast', event:'phase', payload:{ phase:'quiz_done', finalists: finalists.map(f=>f.id) } });
 }
 
 function startGame() {
-  const sorted = Object.values(players).sort((a,b)=>b.score-a.score);
-  const finalists = sorted.slice(0,5);
+  const sorted = Object.entries(players).sort(([,a],[,b]) => b.score - a.score);
+  const finalists = sorted.slice(0,5).map(([id,p]) => ({ id, name:p.name }));
   showPhase('game');
-  channel.send({ type:'broadcast', event:'phase', payload:{ phase:'game', finalists: finalists.map(p=>({id:p.id,name:p.name})) } });
+  channel.send({ type:'broadcast', event:'phase', payload:{ phase:'game', finalists } });
   initGame(finalists);
 }
 
@@ -329,8 +332,14 @@ document.addEventListener('keydown', e => {
 
 // ── GAME ENGINE
 const COLORS = ['#f5a623','#1a6644','#c0392b','#185FA5','#7c3aed'];
-const LANE_STARTS = [0.15, 0.35, 0.5, 0.65, 0.85];
 const TOTAL_LAPS = 10;
+
+function angleDiff(a, b) {
+  let d = a - b;
+  while (d >  Math.PI) d -= 2 * Math.PI;
+  while (d < -Math.PI) d += 2 * Math.PI;
+  return d;
+}
 
 function initGame(finalists) {
   cancelAnimationFrame(animFrame);
@@ -338,9 +347,9 @@ function initGame(finalists) {
   const ctx = canvas.getContext('2d');
 
   function resize() {
-    canvas.width = canvas.offsetWidth * devicePixelRatio;
+    canvas.width  = canvas.offsetWidth  * devicePixelRatio;
     canvas.height = canvas.offsetHeight * devicePixelRatio;
-    ctx.scale(devicePixelRatio, devicePixelRatio);
+    ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
   }
   resize();
   window.addEventListener('resize', resize);
@@ -348,12 +357,82 @@ function initGame(finalists) {
   const W = () => canvas.offsetWidth;
   const H = () => canvas.offsetHeight;
 
-  gameState.cars = finalists.map((p, i) => ({
-    id: p.id, name: p.name, color: COLORS[i % COLORS.length],
-    progress: 0, lane: LANE_STARTS[i] ?? 0.5,
-    speed: 0, steerLeft: false, steerRight: false, boost: false,
-    lapsDone: 0, finished: false, rank: null,
-  }));
+  const CAR_W = 13, CAR_H = 24;   // half-dimensions → car is 26×48 px
+  const COLL_R   = 30;
+  const TURN_RATE = 0.038;
+  const MAX_SPD   = 3.2;
+  const BOOST_SPD = 5.5;
+  const ACCEL     = 0.10;
+
+  // Track geometry (recomputed each frame so it survives canvas resizes)
+  function tg() {
+    const w = W(), h = H();
+    const cx = w / 2, cy = h / 2;
+    const sl = w * 0.27;                          // half-length of straights
+    const R  = Math.min(h * 0.32, w * 0.20, 200); // curve radius
+    const hw = Math.min(52, R * 0.55);            // track half-width
+    return { cx, cy, sl, R, hw, lx: cx - sl, rx: cx + sl };
+  }
+
+  // Distance from (px,py) to the oval centerline (capsule at radius R from foci)
+  function distCL(px, py, g) {
+    const { cy, R, lx, rx } = g;
+    if (px >= lx && px <= rx) {
+      return Math.min(Math.abs(py - cy + R), Math.abs(py - cy - R));
+    } else if (px > rx) {
+      return Math.abs(Math.hypot(px - rx, py - cy) - R);
+    } else {
+      return Math.abs(Math.hypot(px - lx, py - cy) - R);
+    }
+  }
+
+  // Nearest point on centerline + clockwise tangent direction
+  function nearestCL(px, py, g) {
+    const { cy, R, lx, rx } = g;
+    if (px >= lx && px <= rx) {
+      if (Math.abs(py - (cy - R)) < Math.abs(py - (cy + R))) {
+        return { nx: px, ny: cy - R, tx: -1, ty: 0 };   // top straight → going left
+      } else {
+        return { nx: px, ny: cy + R, tx:  1, ty: 0 };   // bottom straight → going right
+      }
+    } else if (px > rx) {
+      const a = Math.atan2(py - cy, px - rx);
+      return { nx: rx + Math.cos(a) * R, ny: cy + Math.sin(a) * R,
+               tx: Math.sin(a), ty: -Math.cos(a) };
+    } else {
+      const a = Math.atan2(py - cy, px - lx);
+      return { nx: lx + Math.cos(a) * R, ny: cy + Math.sin(a) * R,
+               tx: Math.sin(a), ty: -Math.cos(a) };
+    }
+  }
+
+  // Draw a stadium/capsule path
+  function capsule(lx, rx, cy, r) {
+    ctx.beginPath();
+    ctx.moveTo(lx, cy - r);
+    ctx.lineTo(rx, cy - r);
+    ctx.arc(rx, cy, r, -Math.PI / 2, Math.PI / 2);
+    ctx.lineTo(lx, cy + r);
+    ctx.arc(lx, cy, r, Math.PI / 2, 3 * Math.PI / 2);
+    ctx.closePath();
+  }
+
+  // Initial car positions: grid on the bottom straight, to the right of the finish line
+  const g0 = tg();
+  const n = finalists.length;
+  const spacing = Math.min(CAR_H * 2 + 10, g0.sl * 0.55 / Math.max(n - 1, 1));
+  gameState.cars = finalists.map((p, i) => {
+    const x = g0.cx + 20 + (n - 1 - i) * spacing;
+    return {
+      id: p.id, name: p.name, color: COLORS[i % COLORS.length],
+      x, y: g0.cy + g0.R,
+      heading: 0,   // pointing right (clockwise direction on bottom straight)
+      speed: 0,
+      steerLeft: false, steerRight: false, boost: false,
+      lapsDone: 0, prevX: x,
+      finished: false, rank: null,
+    };
+  });
   gameState.raceStarted = false;
   gameState.finishOrder = [];
   gameState.ended = false;
@@ -367,7 +446,6 @@ function initGame(finalists) {
     </div>
   `).join('');
 
-  // Show "waiting" in countdown overlay
   $('countdown-overlay').style.display = 'flex';
   $('countdown-num').textContent = '⏳';
   $('countdown-num').style.fontSize = '5rem';
@@ -376,164 +454,164 @@ function initGame(finalists) {
   function loop() {
     animFrame = requestAnimationFrame(loop);
     const w = W(), h = H();
-    const cx = w / 2, cy = h / 2;
-    const tcr = Math.min(w, h) * 0.32;
-    const thw = Math.min(w, h) * 0.075;
-    const innerR = tcr - thw;
-    const outerR = tcr + thw;
+    const g = tg();
+    const { cx, cy, sl, R, hw, lx, rx } = g;
 
     ctx.clearRect(0, 0, w, h);
-
-    // Background
     ctx.fillStyle = '#0d1a0f';
     ctx.fillRect(0, 0, w, h);
 
     // Outer grass ring
-    ctx.beginPath();
-    ctx.arc(cx, cy, outerR + 28, 0, Math.PI * 2);
-    ctx.fillStyle = '#0a160b';
-    ctx.fill();
+    capsule(lx, rx, cy, R + hw + 20);
+    ctx.fillStyle = '#0a160b'; ctx.fill();
 
     // Track surface
-    ctx.beginPath();
-    ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
-    ctx.fillStyle = '#2c3e30';
-    ctx.fill();
+    capsule(lx, rx, cy, R + hw);
+    ctx.fillStyle = '#2c3e30'; ctx.fill();
 
-    // Inner grass
-    ctx.beginPath();
-    ctx.arc(cx, cy, innerR, 0, Math.PI * 2);
-    ctx.fillStyle = '#0d1a0f';
-    ctx.fill();
+    // Inner grass cutout
+    capsule(lx, rx, cy, R - hw);
+    ctx.fillStyle = '#0d1a0f'; ctx.fill();
 
-    // Center dashed lane divider
-    ctx.beginPath();
-    ctx.arc(cx, cy, tcr, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-    ctx.setLineDash([16, 14]);
+    // Centerline dashes
+    ctx.save();
+    ctx.setLineDash([14, 12]);
     ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.setLineDash([]);
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    capsule(lx, rx, cy, R); ctx.stroke();
+    ctx.restore();
 
     // Track borders
-    [outerR, innerR].forEach(r => {
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    for (const r of [R + hw, R - hw]) {
+      capsule(lx, rx, cy, r);
       ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-      ctx.lineWidth = 3;
-      ctx.stroke();
-    });
-
-    // Checkered start/finish line at angle 0 (right side)
-    ctx.save();
-    ctx.translate(cx, cy);
-    const lineLen = outerR - innerR;
-    const sqSize = 7;
-    for (let j = 0; j < lineLen; j += sqSize) {
-      ctx.fillStyle = (Math.floor(j / sqSize) % 2 === 0) ? '#fff' : '#333';
-      ctx.fillRect(innerR + j, -sqSize / 2, sqSize, sqSize);
+      ctx.lineWidth = 3; ctx.stroke();
     }
-    ctx.restore();
+
+    // Checkered start/finish stripe at x=cx, bottom straight
+    const sfTop = cy + R - hw + 2, sfBot = cy + R + hw - 2, sqSz = 8, cols = 3;
+    for (let col = 0; col < cols; col++) {
+      for (let j = 0; j * sqSz < sfBot - sfTop; j++) {
+        ctx.fillStyle = ((col + j) % 2 === 0) ? '#fff' : '#333';
+        ctx.fillRect(cx - cols * sqSz / 2 + col * sqSz, sfTop + j * sqSz, sqSz, sqSz);
+      }
+    }
 
     // Center leaderboard
     const sorted = [...gameState.cars].sort((a, b) =>
-      b.lapsDone !== a.lapsDone ? b.lapsDone - a.lapsDone : b.progress - a.progress
+      b.lapsDone !== a.lapsDone ? b.lapsDone - a.lapsDone : 0
     );
-    const fs = Math.max(10, Math.min(15, innerR * 0.075));
+    const fsLB = Math.max(11, Math.min(15, (R - hw - 6) / sorted.length * 0.65));
+    const listH = sorted.length * fsLB * 1.6;
     ctx.textAlign = 'center';
-    const listH = sorted.length * fs * 1.6;
     sorted.forEach((car, i) => {
-      const y = cy - listH / 2 + i * fs * 1.6 + fs;
-      ctx.font = `bold ${fs}px DM Sans`;
-      ctx.fillStyle = car.finished ? '#666' : car.color;
-      const label = car.rank ? `#${car.rank}` : `${i + 1}.`;
-      ctx.fillText(`${label} ${car.name}  ${car.lapsDone}/${TOTAL_LAPS}`, cx, y);
+      const y = cy - listH / 2 + i * fsLB * 1.6 + fsLB;
+      ctx.font = `bold ${fsLB}px DM Sans`;
+      ctx.fillStyle = car.finished ? '#555' : car.color;
+      ctx.fillText(`${i + 1}. ${car.name}  ${car.lapsDone}/${TOTAL_LAPS}`, cx, y);
     });
 
-    // Update physics
+    // ── Physics
     if (gameState.raceStarted) {
       gameState.cars.forEach(car => {
         if (car.finished) return;
 
-        const STEER = 0.024;
-        if (car.steerLeft)  car.lane = Math.max(0, car.lane - STEER);
-        if (car.steerRight) car.lane = Math.min(1, car.lane + STEER);
+        // Steering
+        if (car.steerLeft)  car.heading -= TURN_RATE;
+        if (car.steerRight) car.heading += TURN_RATE;
 
-        const hitWall = car.lane < 0.04 || car.lane > 0.96;
-        if (car.lane < 0.04) car.lane = 0.04;
-        if (car.lane > 0.96) car.lane = 0.96;
+        // Speed (reduced off-track)
+        const onTrack = distCL(car.x, car.y, g) <= hw;
+        const targetSpd = (car.boost ? BOOST_SPD : MAX_SPD) * (onTrack ? 1 : 0.35);
+        car.speed += (targetSpd - car.speed) * ACCEL;
 
-        const effR = innerR + car.lane * thw * 2;
-        const BASE = 4.2;
-        const boostMul = car.boost ? 1.55 : 1.0;
-        const wallMul  = hitWall ? 0.78 : 1.0;
-        const target = (BASE * boostMul * wallMul) / effR;
-        car.speed += (target - car.speed) * 0.14;
+        // Move
+        car.x += Math.cos(car.heading) * car.speed;
+        car.y += Math.sin(car.heading) * car.speed;
 
-        const prevLaps = car.lapsDone;
-        car.progress += car.speed;
-        car.lapsDone = Math.floor(car.progress / (Math.PI * 2));
+        // Off-track: pull back + nudge heading toward track tangent
+        const d2 = distCL(car.x, car.y, g);
+        if (d2 > hw) {
+          const cl = nearestCL(car.x, car.y, g);
+          const pull = Math.min(0.28, (d2 - hw) / d2 * 0.45);
+          car.x += (cl.nx - car.x) * pull;
+          car.y += (cl.ny - car.y) * pull;
+          car.heading += angleDiff(Math.atan2(cl.ty, cl.tx), car.heading) * 0.06;
+        }
 
-        if (car.lapsDone > prevLaps) {
+        // Lap counter: cross x=cx going right while on bottom straight
+        if (Math.abs(car.y - (cy + R)) < hw && car.prevX < cx && car.x >= cx) {
+          car.lapsDone++;
           const el = $(`hud-lap-${car.id}`);
           if (el) el.textContent = `${car.lapsDone}/${TOTAL_LAPS}`;
           channel.send({ type: 'broadcast', event: 'lap_update', payload: { id: car.id, lap: car.lapsDone } });
+          if (car.lapsDone >= TOTAL_LAPS) {
+            car.finished = true;
+            gameState.finishOrder.push({ id: car.id, name: car.name });
+            car.rank = gameState.finishOrder.length;
+            if (el) el.textContent = `#${car.rank}`;
+          }
         }
-
-        if (car.lapsDone >= TOTAL_LAPS && !car.finished) {
-          car.finished = true;
-          gameState.finishOrder.push({ id: car.id, name: car.name });
-          car.rank = gameState.finishOrder.length;
-          const el = $(`hud-lap-${car.id}`);
-          if (el) el.textContent = `#${car.rank}`;
-        }
+        car.prevX = car.x;
       });
+
+      // Car-to-car collisions (circle push-apart)
+      const active = gameState.cars.filter(c => !c.finished);
+      for (let i = 0; i < active.length; i++) {
+        for (let j = i + 1; j < active.length; j++) {
+          const a = active[i], b = active[j];
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist < COLL_R && dist > 0) {
+            const push = (COLL_R - dist) / 2;
+            const nx = dx / dist, ny = dy / dist;
+            a.x -= nx * push; a.y -= ny * push;
+            b.x += nx * push; b.y += ny * push;
+          }
+        }
+      }
     }
 
-    // Draw cars
+    // ── Draw cars
     gameState.cars.forEach(car => {
-      const angle = car.progress % (Math.PI * 2);
-      const effR = innerR + car.lane * thw * 2;
-      const carX = cx + Math.cos(angle) * effR;
-      const carY = cy + Math.sin(angle) * effR;
-      const dir = angle + Math.PI / 2;
-
       ctx.save();
-      ctx.translate(carX, carY);
-      ctx.rotate(dir);
+      ctx.translate(car.x, car.y);
+      ctx.rotate(car.heading + Math.PI / 2);  // heading 0 = right → rotate so car faces up
 
       // Shadow
-      ctx.fillStyle = 'rgba(0,0,0,0.35)';
-      ctx.fillRect(-9, -13, 18, 26);
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(-CAR_W - 2, -CAR_H - 2, (CAR_W + 2) * 2, (CAR_H + 2) * 2);
 
       // Body
-      ctx.fillStyle = car.finished ? '#555' : car.color;
-      ctx.fillRect(-8, -12, 16, 24);
+      ctx.fillStyle = car.finished ? '#444' : car.color;
+      ctx.fillRect(-CAR_W, -CAR_H, CAR_W * 2, CAR_H * 2);
 
       // Windshield
-      ctx.fillStyle = 'rgba(180,220,255,0.55)';
-      ctx.fillRect(-5, -10, 10, 7);
+      ctx.fillStyle = 'rgba(180,220,255,0.6)';
+      ctx.fillRect(-CAR_W + 3, -CAR_H + 4, (CAR_W - 3) * 2, 8);
 
-      // Boost glow
+      // Boost flame
       if (car.boost && !car.finished) {
-        ctx.fillStyle = 'rgba(255,200,0,0.5)';
-        ctx.fillRect(-5, 10, 10, 8);
+        ctx.fillStyle = 'rgba(255,160,0,0.85)';
+        ctx.fillRect(-5, CAR_H, 10, 10);
       }
 
       ctx.restore();
 
       // Name label above car
       ctx.save();
-      ctx.translate(carX, carY);
+      ctx.translate(car.x, car.y);
       ctx.textAlign = 'center';
-      const lfs = Math.max(9, Math.min(12, thw * 0.22));
-      ctx.font = `bold ${lfs}px DM Sans`;
+      ctx.font = 'bold 11px DM Sans';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(0,0,0,0.65)';
+      ctx.strokeText(car.name, 0, -CAR_H - 6);
       ctx.fillStyle = car.color;
-      ctx.fillText(car.name, 0, -20);
+      ctx.fillText(car.name, 0, -CAR_H - 6);
       ctx.restore();
     });
 
-    // All finished
+    // All finished?
     if (gameState.raceStarted && gameState.cars.every(c => c.finished) && !gameState.ended) {
       gameState.ended = true;
       setTimeout(showPodium, 2000);

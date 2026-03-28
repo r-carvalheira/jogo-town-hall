@@ -121,6 +121,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   <div class="reg-title">Olá! 👋</div>
   <div class="reg-sub">Escreve o teu nome para entrar no quiz</div>
   <input class="reg-input" id="name-input" type="text" placeholder="O teu nome..." maxlength="20" />
+  <div id="name-error" style="font-size:0.82rem;color:var(--danger);font-family:'DM Mono',monospace;text-align:center;min-height:1.2rem;"></div>
   <button class="btn" id="join-btn" onclick="joinGame()">Entrar no jogo</button>
 </div>
 
@@ -226,6 +227,7 @@ function joinGame() {
   sessionStorage.setItem('th_id', myId);
   sessionStorage.setItem('th_name', myName);
 
+  let presenceChecked = false;
   channel = sb.channel(ROOM, { config: { broadcast: { self: false } } });
   channel
     .on('broadcast', { event: 'phase' }, ({ payload }) => {
@@ -235,8 +237,30 @@ function joinGame() {
       if (payload.id === myId) $('ctrl-lap').textContent = `Volta ${payload.lap} / 10`;
     })
     .on('presence', { event: 'sync' }, () => {
-      // Sincronizar com fase atual assim que ligamos (útil para quem entra tarde ou volta após refresh)
       const all = Object.values(channel.presenceState()).flat();
+
+      // Primeira sync: verificar se o nome já está em uso
+      if (!presenceChecked) {
+        presenceChecked = true;
+        const nameTaken = all.some(p =>
+          p.type === 'player' &&
+          p.name.toLowerCase() === myName.toLowerCase() &&
+          p.id !== myId
+        );
+        if (nameTaken) {
+          channel.unsubscribe();
+          channel = null;
+          sessionStorage.removeItem('th_id');
+          $('join-btn').disabled = false;
+          $('name-error').textContent = 'Este nome já está em uso. Escolhe outro.';
+          $('name-input').value = '';
+          $('name-input').focus();
+          showScreen('screen-register');
+          return;
+        }
+      }
+
+      // Sincronizar fase atual (útil para quem entra tarde ou volta após refresh)
       const admin = all.find(p => p.type === 'admin');
       if (!admin || admin.phase === 'waiting') return;
       const onPassiveScreen = $('screen-wait').classList.contains('active') ||
@@ -384,6 +408,7 @@ function setupController() {
 }
 
 $('name-input').addEventListener('keydown', e => { if(e.key==='Enter') joinGame(); });
+$('name-input').addEventListener('input', () => { $('name-error').textContent = ''; });
 
 // Auto-rejoin se houver sessão activa (refresh acidental)
 window.addEventListener('load', () => {
