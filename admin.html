@@ -73,6 +73,7 @@ h1 { font-size: 1.3rem; font-weight: 700; color: var(--green); margin-bottom: 0.
   <div class="btn-row">
     <button class="btn btn-green" id="btn-start-quiz" onclick="sendPhase('quiz')" disabled>▶ Iniciar Quiz</button>
     <button class="btn btn-gold" id="btn-start-game" onclick="sendPhase('game')" disabled>🏁 Iniciar Jogo Final</button>
+    <button class="btn btn-green" id="btn-start-race" onclick="startRace()" style="display:none">🚦 Começar Corrida</button>
     <button class="btn btn-red" id="btn-reset" onclick="sendPhase('waiting')" disabled>↺ Reset</button>
   </div>
 </div>
@@ -155,7 +156,15 @@ function sendPhase(phase) {
   $('phase-badge').textContent = phase;
   log(`FASE: ${phase}`);
 
-  if (phase === 'waiting') { players = {}; renderPlayers(); }
+  if (phase === 'game') { $('btn-start-race').style.display = ''; }
+  if (phase === 'waiting') { players = {}; renderPlayers(); $('btn-start-race').style.display = 'none'; }
+}
+
+function startRace() {
+  if (!channel) return;
+  channel.send({ type:'broadcast', event:'start_race', payload:{} });
+  log('CORRIDA INICIADA');
+  $('btn-start-race').disabled = true;
 }
 
 function renderPlayers() {

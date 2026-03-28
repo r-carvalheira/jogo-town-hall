@@ -85,42 +85,33 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .nf-score { font-size: 3rem; font-weight: 700; color: var(--green); }
 .nf-label { font-size: 0.85rem; font-family: 'DM Mono', monospace; color: var(--muted); }
 
-/* ─── TILT CONTROLLER ─── */
+/* ─── BUTTON CONTROLLER ─── */
 #screen-controller {
   display: none; position: fixed; inset: 0; background: #0d1a0f; color: #eef5f0;
-  flex-direction: column; align-items: center; justify-content: center; gap: 1.5rem;
+  flex-direction: column; align-items: center; justify-content: center; gap: 1.4rem;
 }
 #screen-controller.active { display: flex; }
 .ctrl-name { font-size: 1.4rem; font-weight: 700; color: #eef5f0; }
-.ctrl-label { font-size: 0.8rem; font-family: 'DM Mono', monospace; color: rgba(255,255,255,0.5); text-align: center; }
-.tilt-viz {
-  width: 200px; height: 200px; border: 2px solid rgba(255,255,255,0.15);
-  border-radius: 50%; position: relative; background: rgba(255,255,255,0.03);
+.ctrl-lap { font-family: 'DM Mono', monospace; font-size: 1.1rem; color: var(--gold); }
+.ctrl-btns { display: flex; align-items: center; gap: 1.5rem; }
+.ctrl-btn {
+  width: 110px; height: 110px; border-radius: 50%;
+  border: 3px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.07); color: #eef5f0;
+  font-size: 2.8rem; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; user-select: none; -webkit-user-select: none;
+  touch-action: none; -webkit-tap-highlight-color: transparent;
+  transition: background 0.08s, transform 0.08s;
 }
-.tilt-dot {
-  width: 36px; height: 36px; border-radius: 50%; background: var(--gold);
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-  transition: left 0.08s ease;
+.ctrl-btn.pressed { background: rgba(255,255,255,0.22); transform: scale(0.93); }
+.ctrl-boost {
+  width: 80px; height: 80px;
+  border-color: var(--gold); background: rgba(245,166,35,0.12); color: var(--gold);
+  font-size: 2rem;
 }
-.tilt-bar-wrap {
-  width: 240px; height: 16px; background: rgba(255,255,255,0.1);
-  border-radius: 8px; position: relative; overflow: visible;
-}
-.tilt-bar-indicator {
-  width: 28px; height: 28px; border-radius: 50%; background: var(--gold);
-  position: absolute; top: 50%; transform: translateY(-50%); transition: left 0.08s ease;
-}
-.ctrl-status { font-size: 0.85rem; font-family: 'DM Mono', monospace; color: rgba(255,255,255,0.4); }
-.rotate-hint {
-  font-size: 0.85rem; font-family: 'DM Mono', monospace; color: rgba(255,255,255,0.5);
-  text-align: center; padding: 0.5rem 1rem; border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 8px; max-width: 260px;
-}
-.grant-btn {
-  padding: 14px 32px; border-radius: 12px; border: none; background: var(--gold);
-  color: #1a2b1f; font-family: 'DM Sans', sans-serif; font-weight: 700; font-size: 1rem;
-  cursor: pointer;
-}
+.boost-bar-wrap { width: 220px; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; }
+.boost-bar { height: 100%; background: var(--gold); border-radius: 4px; }
+.ctrl-status { font-size: 0.8rem; font-family: 'DM Mono', monospace; color: rgba(255,255,255,0.4); }
 </style>
 </head>
 <body>
@@ -165,16 +156,17 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   </div>
 </div>
 
-<!-- TILT CONTROLLER -->
+<!-- BUTTON CONTROLLER -->
 <div id="screen-controller">
   <div class="ctrl-name" id="ctrl-name"></div>
-  <div class="rotate-hint">📱 Deita o telemóvel para o lado e inclina para guiar o barco</div>
-  <div class="tilt-bar-wrap">
-    <div class="tilt-bar-indicator" id="tilt-indicator" style="left:calc(50% - 14px)"></div>
+  <div class="ctrl-lap" id="ctrl-lap">Volta 0 / 10</div>
+  <div class="ctrl-btns">
+    <button class="ctrl-btn" id="btn-left">◀</button>
+    <button class="ctrl-btn ctrl-boost" id="btn-boost">⚡</button>
+    <button class="ctrl-btn" id="btn-right">▶</button>
   </div>
-  <div class="ctrl-label">← esquerda &nbsp;&nbsp; direita →</div>
-  <button class="grant-btn" id="grant-btn" onclick="requestMotion()">Activar giroscópio</button>
-  <div class="ctrl-status" id="ctrl-status">A aguardar permissão...</div>
+  <div class="boost-bar-wrap"><div class="boost-bar" id="boost-bar" style="width:100%"></div></div>
+  <div class="ctrl-status" id="ctrl-status">A aguardar arranque...</div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -236,6 +228,9 @@ function joinGame() {
     .on('broadcast', { event: 'phase' }, ({ payload }) => {
       handlePhase(payload);
     })
+    .on('broadcast', { event: 'lap_update' }, ({ payload }) => {
+      if (payload.id === myId) $('ctrl-lap').textContent = `Volta ${payload.lap} / 10`;
+    })
     .subscribe(() => {
       channel.send({ type:'broadcast', event:'join', payload:{ id:myId, name:myName } });
       $('wait-name').textContent = myName;
@@ -260,10 +255,11 @@ function handlePhase(payload) {
   } else if (payload.phase === 'game') {
     const finalists = payload.finalists || [];
     const me = finalists.find(f => f.id === myId);
-    if (me) {
+    if (me && !isFinalist) {
       isFinalist = true;
       $('ctrl-name').textContent = me.name;
       showController();
+      setupController();
     }
   }
 }
@@ -317,39 +313,52 @@ function finishQuiz() {
   channel.send({ type:'broadcast', event:'score', payload:{ id:myId, name:myName, score:myScore, finished:true } });
 }
 
-// ── TILT CONTROLLER
-let tiltInterval = null;
-let motionGranted = false;
+// ── BUTTON CONTROLLER
+function setupController() {
+  const inputState = { left: false, right: false, boost: false };
+  let boostEnergy = 100;
 
-function requestMotion() {
-  if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
-    DeviceMotionEvent.requestPermission().then(state => {
-      if (state === 'granted') activateTilt();
-      else $('ctrl-status').textContent = 'Permissão negada. Tenta nas definições do Safari.';
-    }).catch(() => $('ctrl-status').textContent = 'Erro ao pedir permissão.');
-  } else {
-    activateTilt();
-  }
-}
-
-function activateTilt() {
-  motionGranted = true;
-  $('grant-btn').style.display = 'none';
-  $('ctrl-status').textContent = 'Giroscópio ativo — inclina para guiar!';
-
-  // landscape lock hint
-  if (screen.orientation && screen.orientation.lock) {
-    screen.orientation.lock('landscape').catch(()=>{});
+  function sendInput() {
+    if (!channel) return;
+    channel.send({ type: 'broadcast', event: 'input', payload: { id: myId, ...inputState } });
   }
 
-  window.addEventListener('deviceorientation', e => {
-    const gamma = e.gamma || 0; // -90 to 90, tilt left/right in portrait
-    const tilt = Math.max(-1, Math.min(1, gamma / 45));
-    const pct = (tilt + 1) / 2;
-    $('tilt-indicator').style.left = `calc(${pct * 100}% - 14px)`;
-    // send tilt
-    channel.send({ type:'broadcast', event:'tilt', payload:{ id:myId, tilt } });
-  });
+  function bindBtn(btnId, key) {
+    const btn = $(btnId);
+    btn.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      inputState[key] = true;
+      btn.classList.add('pressed');
+      sendInput();
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => {
+      btn.addEventListener(ev, e => {
+        e.preventDefault();
+        if (inputState[key]) { inputState[key] = false; btn.classList.remove('pressed'); sendInput(); }
+      });
+    });
+  }
+
+  bindBtn('btn-left', 'left');
+  bindBtn('btn-right', 'right');
+  bindBtn('btn-boost', 'boost');
+
+  // Boost energy bar
+  setInterval(() => {
+    if (inputState.boost && boostEnergy > 0) {
+      boostEnergy = Math.max(0, boostEnergy - 2.5);
+      if (boostEnergy <= 0) {
+        inputState.boost = false;
+        $('btn-boost').classList.remove('pressed');
+        sendInput();
+      }
+    } else if (!inputState.boost) {
+      boostEnergy = Math.min(100, boostEnergy + 0.8);
+    }
+    $('boost-bar').style.width = boostEnergy + '%';
+  }, 50);
+
+  $('ctrl-status').textContent = '◀ esquerda  ⚡ boost  ▶ direita';
 }
 
 $('name-input').addEventListener('keydown', e => { if(e.key==='Enter') joinGame(); });

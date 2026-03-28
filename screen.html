@@ -120,7 +120,7 @@ canvas#game-canvas { width: 100%; height: 100%; display: block; }
 
 <!-- PHASE: WAITING -->
 <div id="phase-waiting" class="active-phase">
-  <div class="waiting-title">Conheces o Rodrigo? 🎸</div>
+  <div class="waiting-title">Conheces o Rodrigo? </div>
   <div class="waiting-sub">Faz scan do QR code para entrar</div>
   <div class="qr-box" id="qr-display">
     QR code aqui<br><br>
@@ -252,11 +252,14 @@ channel
       showFinalists();
     }
   })
-  .on('broadcast', { event: 'tilt' }, ({ payload }) => {
-    if (gameState.boats) {
-      const boat = gameState.boats.find(b => b.id === payload.id);
-      if (boat) boat.targetTilt = Math.max(-1, Math.min(1, payload.tilt));
+  .on('broadcast', { event: 'input' }, ({ payload }) => {
+    if (gameState.cars) {
+      const car = gameState.cars.find(c => c.id === payload.id);
+      if (car) { car.steerLeft = !!payload.left; car.steerRight = !!payload.right; car.boost = !!payload.boost; }
     }
+  })
+  .on('broadcast', { event: 'start_race' }, () => {
+    if (phase === 'game') startRace();
   })
   .on('broadcast', { event: 'phase' }, ({ payload }) => {
     if (payload.phase === 'quiz') {
@@ -299,14 +302,18 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     if (phase === 'waiting') { showPhase('quiz'); channel.send({type:'broadcast',event:'phase',payload:{phase:'quiz'}}); }
     else if (phase === 'quiz') startGame();
-    else if (phase === 'game') endGame();
+    else if (phase === 'game' && !gameState.raceStarted) startRace();
+    else if (phase === 'game' && gameState.raceStarted) endGame();
   }
 });
 
 // ── GAME ENGINE
-const COLORS = ['#1a6644','#c97a00','#c0392b','#185FA5','#7c3aed'];
+const COLORS = ['#f5a623','#1a6644','#c0392b','#185FA5','#7c3aed'];
+const LANE_STARTS = [0.15, 0.35, 0.5, 0.65, 0.85];
+const TOTAL_LAPS = 10;
 
 function initGame(finalists) {
+  cancelAnimationFrame(animFrame);
   const canvas = $('game-canvas');
   const ctx = canvas.getContext('2d');
 
@@ -320,29 +327,209 @@ function initGame(finalists) {
 
   const W = () => canvas.offsetWidth;
   const H = () => canvas.offsetHeight;
-  const TRACK_H = 80;
 
-  gameState.boats = finalists.map((p, i) => ({
-    id: p.id,
-    name: p.name,
-    color: COLORS[i],
-    x: 120,
-    y: TRACK_H * i + TRACK_H / 2,
-    targetTilt: 0,
-    tilt: 0,
-    speed: 0,
-    finished: false,
-    finishTime: null,
-    rank: null,
+  gameState.cars = finalists.map((p, i) => ({
+    id: p.id, name: p.name, color: COLORS[i % COLORS.length],
+    progress: 0, lane: LANE_STARTS[i] ?? 0.5,
+    speed: 0, steerLeft: false, steerRight: false, boost: false,
+    lapsDone: 0, finished: false, rank: null,
   }));
-  gameState.finishX = null;
+  gameState.raceStarted = false;
   gameState.finishOrder = [];
-  gameState.started = false;
-  gameState.startTime = null;
+  gameState.ended = false;
 
-  // countdown
+  // HUD
+  const hud = $('game-hud');
+  hud.innerHTML = finalists.map((p, i) => `
+    <div class="hud-card">
+      <div class="hud-name" style="color:${COLORS[i % COLORS.length]}">${p.name}</div>
+      <div class="hud-pos" id="hud-lap-${p.id}">0/${TOTAL_LAPS}</div>
+    </div>
+  `).join('');
+
+  // Show "waiting" in countdown overlay
+  $('countdown-overlay').style.display = 'flex';
+  $('countdown-num').textContent = '⏳';
+  $('countdown-num').style.fontSize = '5rem';
+  $('countdown-num').style.color = 'rgba(255,255,255,0.5)';
+
+  function loop() {
+    animFrame = requestAnimationFrame(loop);
+    const w = W(), h = H();
+    const cx = w / 2, cy = h / 2;
+    const tcr = Math.min(w, h) * 0.32;
+    const thw = Math.min(w, h) * 0.075;
+    const innerR = tcr - thw;
+    const outerR = tcr + thw;
+
+    ctx.clearRect(0, 0, w, h);
+
+    // Background
+    ctx.fillStyle = '#0d1a0f';
+    ctx.fillRect(0, 0, w, h);
+
+    // Outer grass ring
+    ctx.beginPath();
+    ctx.arc(cx, cy, outerR + 28, 0, Math.PI * 2);
+    ctx.fillStyle = '#0a160b';
+    ctx.fill();
+
+    // Track surface
+    ctx.beginPath();
+    ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
+    ctx.fillStyle = '#2c3e30';
+    ctx.fill();
+
+    // Inner grass
+    ctx.beginPath();
+    ctx.arc(cx, cy, innerR, 0, Math.PI * 2);
+    ctx.fillStyle = '#0d1a0f';
+    ctx.fill();
+
+    // Center dashed lane divider
+    ctx.beginPath();
+    ctx.arc(cx, cy, tcr, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.setLineDash([16, 14]);
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Track borders
+    [outerR, innerR].forEach(r => {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    });
+
+    // Checkered start/finish line at angle 0 (right side)
+    ctx.save();
+    ctx.translate(cx, cy);
+    const lineLen = outerR - innerR;
+    const sqSize = 7;
+    for (let j = 0; j < lineLen; j += sqSize) {
+      ctx.fillStyle = (Math.floor(j / sqSize) % 2 === 0) ? '#fff' : '#333';
+      ctx.fillRect(innerR + j, -sqSize / 2, sqSize, sqSize);
+    }
+    ctx.restore();
+
+    // Center leaderboard
+    const sorted = [...gameState.cars].sort((a, b) =>
+      b.lapsDone !== a.lapsDone ? b.lapsDone - a.lapsDone : b.progress - a.progress
+    );
+    const fs = Math.max(10, Math.min(15, innerR * 0.075));
+    ctx.textAlign = 'center';
+    const listH = sorted.length * fs * 1.6;
+    sorted.forEach((car, i) => {
+      const y = cy - listH / 2 + i * fs * 1.6 + fs;
+      ctx.font = `bold ${fs}px DM Sans`;
+      ctx.fillStyle = car.finished ? '#666' : car.color;
+      const label = car.rank ? `#${car.rank}` : `${i + 1}.`;
+      ctx.fillText(`${label} ${car.name}  ${car.lapsDone}/${TOTAL_LAPS}`, cx, y);
+    });
+
+    // Update physics
+    if (gameState.raceStarted) {
+      gameState.cars.forEach(car => {
+        if (car.finished) return;
+
+        const STEER = 0.024;
+        if (car.steerLeft)  car.lane = Math.max(0, car.lane - STEER);
+        if (car.steerRight) car.lane = Math.min(1, car.lane + STEER);
+
+        const hitWall = car.lane < 0.04 || car.lane > 0.96;
+        if (car.lane < 0.04) car.lane = 0.04;
+        if (car.lane > 0.96) car.lane = 0.96;
+
+        const effR = innerR + car.lane * thw * 2;
+        const BASE = 4.2;
+        const boostMul = car.boost ? 1.55 : 1.0;
+        const wallMul  = hitWall ? 0.78 : 1.0;
+        const target = (BASE * boostMul * wallMul) / effR;
+        car.speed += (target - car.speed) * 0.14;
+
+        const prevLaps = car.lapsDone;
+        car.progress += car.speed;
+        car.lapsDone = Math.floor(car.progress / (Math.PI * 2));
+
+        if (car.lapsDone > prevLaps) {
+          const el = $(`hud-lap-${car.id}`);
+          if (el) el.textContent = `${car.lapsDone}/${TOTAL_LAPS}`;
+          channel.send({ type: 'broadcast', event: 'lap_update', payload: { id: car.id, lap: car.lapsDone } });
+        }
+
+        if (car.lapsDone >= TOTAL_LAPS && !car.finished) {
+          car.finished = true;
+          gameState.finishOrder.push({ id: car.id, name: car.name });
+          car.rank = gameState.finishOrder.length;
+          const el = $(`hud-lap-${car.id}`);
+          if (el) el.textContent = `#${car.rank}`;
+        }
+      });
+    }
+
+    // Draw cars
+    gameState.cars.forEach(car => {
+      const angle = car.progress % (Math.PI * 2);
+      const effR = innerR + car.lane * thw * 2;
+      const carX = cx + Math.cos(angle) * effR;
+      const carY = cy + Math.sin(angle) * effR;
+      const dir = angle + Math.PI / 2;
+
+      ctx.save();
+      ctx.translate(carX, carY);
+      ctx.rotate(dir);
+
+      // Shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(-9, -13, 18, 26);
+
+      // Body
+      ctx.fillStyle = car.finished ? '#555' : car.color;
+      ctx.fillRect(-8, -12, 16, 24);
+
+      // Windshield
+      ctx.fillStyle = 'rgba(180,220,255,0.55)';
+      ctx.fillRect(-5, -10, 10, 7);
+
+      // Boost glow
+      if (car.boost && !car.finished) {
+        ctx.fillStyle = 'rgba(255,200,0,0.5)';
+        ctx.fillRect(-5, 10, 10, 8);
+      }
+
+      ctx.restore();
+
+      // Name label above car
+      ctx.save();
+      ctx.translate(carX, carY);
+      ctx.textAlign = 'center';
+      const lfs = Math.max(9, Math.min(12, thw * 0.22));
+      ctx.font = `bold ${lfs}px DM Sans`;
+      ctx.fillStyle = car.color;
+      ctx.fillText(car.name, 0, -20);
+      ctx.restore();
+    });
+
+    // All finished
+    if (gameState.raceStarted && gameState.cars.every(c => c.finished) && !gameState.ended) {
+      gameState.ended = true;
+      setTimeout(showPodium, 2000);
+    }
+  }
+
+  loop();
+}
+
+function startRace() {
+  if (!gameState.cars || gameState.raceStarted) return;
   let count = 3;
   $('countdown-overlay').style.display = 'flex';
+  $('countdown-num').textContent = count;
+  $('countdown-num').style.fontSize = '8rem';
+  $('countdown-num').style.color = 'var(--gold)';
   const tick = setInterval(() => {
     count--;
     if (count > 0) {
@@ -350,139 +537,15 @@ function initGame(finalists) {
       $('countdown-num').style.animation = 'none';
       void $('countdown-num').offsetWidth;
       $('countdown-num').style.animation = 'pulse 1s ease';
+    } else if (count === 0) {
+      $('countdown-num').textContent = 'GO!';
+      $('countdown-num').style.color = '#1aad5a';
     } else {
       clearInterval(tick);
       $('countdown-overlay').style.display = 'none';
-      gameState.started = true;
-      gameState.startTime = Date.now();
+      gameState.raceStarted = true;
     }
   }, 1000);
-
-  // HUD
-  const hud = $('game-hud');
-  hud.innerHTML = finalists.map((p,i)=>`
-    <div class="hud-card">
-      <div class="hud-name" style="color:${COLORS[i]}">${p.name}</div>
-      <div class="hud-pos" id="hud-pos-${p.id}">—</div>
-    </div>
-  `).join('');
-
-  // wave particles
-  const waves = Array.from({length:40},()=>({
-    x: Math.random()*2000, y: Math.random()*600,
-    r: Math.random()*3+1, speed: Math.random()*0.5+0.2, a: Math.random()
-  }));
-
-  let finishX;
-
-  function loop() {
-    animFrame = requestAnimationFrame(loop);
-    const w = W(), h = H();
-    finishX = w - 100;
-    gameState.finishX = finishX;
-
-    // bg
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = '#0d1a0f';
-    ctx.fillRect(0, 0, w, h);
-
-    // tracks
-    finalists.forEach((p, i) => {
-      const ty = TRACK_H * i;
-      ctx.fillStyle = i%2===0 ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.04)';
-      ctx.fillRect(0, ty, w, TRACK_H);
-      // lane label
-      ctx.fillStyle = 'rgba(255,255,255,0.15)';
-      ctx.font = '12px DM Mono';
-      ctx.fillText(p.name, 10, ty + TRACK_H/2 + 4);
-    });
-
-    // finish line
-    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-    ctx.setLineDash([8,6]);
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(finishX, 0); ctx.lineTo(finishX, h); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.font = '13px DM Mono';
-    ctx.fillText('CHEGADA', finishX - 35, 16);
-
-    // waves
-    waves.forEach(wv => {
-      wv.x -= wv.speed * 0.8;
-      if (wv.x < -10) wv.x = w + 10;
-      ctx.beginPath();
-      ctx.arc(wv.x, wv.y % h, wv.r, 0, Math.PI*2);
-      ctx.fillStyle = `rgba(26,173,114,${0.06 + wv.a*0.08})`;
-      ctx.fill();
-    });
-
-    // boats
-    gameState.boats.forEach((boat, i) => {
-      if (!gameState.started) return;
-      boat.tilt += (boat.targetTilt - boat.tilt) * 0.08;
-      if (!boat.finished) {
-        const baseSpeed = 1.2;
-        boat.speed = baseSpeed + (1 - Math.abs(boat.tilt)) * 2.2;
-        boat.x += boat.speed;
-      }
-
-      // check finish
-      if (!boat.finished && boat.x >= finishX) {
-        boat.finished = true;
-        boat.finishTime = Date.now() - gameState.startTime;
-        gameState.finishOrder.push({ id: boat.id, name: boat.name, time: boat.finishTime });
-        boat.rank = gameState.finishOrder.length;
-        const posEl = $('hud-pos-'+boat.id);
-        if (posEl) posEl.textContent = '#' + boat.rank;
-      }
-
-      const bx = boat.x, by = boat.y;
-      ctx.save();
-      ctx.translate(bx, by);
-      ctx.rotate(boat.tilt * 0.3);
-
-      // boat body
-      ctx.beginPath();
-      ctx.moveTo(-30, 12);
-      ctx.lineTo(30, 8);
-      ctx.lineTo(38, 0);
-      ctx.lineTo(30, -8);
-      ctx.lineTo(-30, -12);
-      ctx.closePath();
-      ctx.fillStyle = boat.color;
-      ctx.fill();
-
-      // sail
-      ctx.beginPath();
-      ctx.moveTo(0, -12);
-      ctx.lineTo(0, -38);
-      ctx.lineTo(22, -14);
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      ctx.fill();
-
-      // wake
-      ctx.beginPath();
-      ctx.moveTo(-30, 6);
-      for (let j=1;j<=5;j++) {
-        ctx.lineTo(-30-j*12, 6+j*3*(j%2?1:-1));
-      }
-      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-
-      ctx.restore();
-    });
-
-    // if all done
-    if (gameState.started && gameState.boats.every(b=>b.finished) && !gameState.ended) {
-      gameState.ended = true;
-      setTimeout(showPodium, 1500);
-    }
-  }
-
-  loop();
 }
 
 function endGame() {
@@ -495,13 +558,11 @@ function showPodium() {
   showPhase('podium');
   const order = gameState.finishOrder || [];
   const wrap = $('podium-wrap');
-  const positions = order.slice(0,3);
+  const positions = order.slice(0, 3);
   const display = [positions[1], positions[0], positions[2]].filter(Boolean);
-
   const classes = { 0: 'p2', 1: 'p1', 2: 'p3' };
-  const medals = { 0: '🥈', 1: '🥇', 2: '🥉' };
-
-  wrap.innerHTML = display.map((p,i) => p ? `
+  const medals  = { 0: '🥈', 1: '🥇', 2: '🥉' };
+  wrap.innerHTML = display.map((p, i) => p ? `
     <div class="podium-col ${classes[i]}">
       <div class="podium-name">${p.name}</div>
       <div class="podium-block">${medals[i]}</div>
