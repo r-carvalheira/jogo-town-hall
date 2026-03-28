@@ -219,9 +219,12 @@ const feedbacks = [
 function joinGame() {
   const name = $('name-input').value.trim();
   if (!name) return;
-  myId = uid();
+  // Restaurar ID da sessão anterior para que o sistema nos reconheça
+  myId = sessionStorage.getItem('th_id') || uid();
   myName = name;
   $('join-btn').disabled = true;
+  sessionStorage.setItem('th_id', myId);
+  sessionStorage.setItem('th_name', myName);
 
   channel = sb.channel(ROOM, { config: { broadcast: { self: false } } });
   channel
@@ -231,7 +234,17 @@ function joinGame() {
     .on('broadcast', { event: 'lap_update' }, ({ payload }) => {
       if (payload.id === myId) $('ctrl-lap').textContent = `Volta ${payload.lap} / 10`;
     })
+    .on('presence', { event: 'sync' }, () => {
+      // Sincronizar com fase atual assim que ligamos (útil para quem entra tarde ou volta após refresh)
+      const all = Object.values(channel.presenceState()).flat();
+      const admin = all.find(p => p.type === 'admin');
+      if (!admin || admin.phase === 'waiting') return;
+      const onPassiveScreen = $('screen-wait').classList.contains('active') ||
+                              $('screen-register').classList.contains('active');
+      if (onPassiveScreen) handlePhase({ phase: admin.phase, finalists: admin.finalists });
+    })
     .subscribe(() => {
+      channel.track({ type: 'player', id: myId, name: myName });
       channel.send({ type:'broadcast', event:'join', payload:{ id:myId, name:myName } });
       $('wait-name').textContent = myName;
       showScreen('screen-wait');
@@ -240,10 +253,11 @@ function joinGame() {
 
 function handlePhase(payload) {
   if (payload.phase === 'quiz') {
-    currentRound = 0;
-    myScore = 0;
+    // Restaurar progresso de sessão anterior (rejoin); 0 para quem entra de novo
+    myScore = parseInt(sessionStorage.getItem('th_score') || '0');
+    currentRound = parseInt(sessionStorage.getItem('th_round') || '0');
     showScreen('screen-quiz');
-    loadRound(0);
+    loadRound(currentRound);
   } else if (payload.phase === 'quiz_done') {
     const finalistIds = payload.finalists || [];
     isFinalist = finalistIds.includes(myId);
@@ -261,11 +275,18 @@ function handlePhase(payload) {
       showController();
       setupController();
     }
+  } else if (payload.phase === 'waiting') {
+    // Reset completo — limpar sessão de progresso
+    sessionStorage.removeItem('th_score');
+    sessionStorage.removeItem('th_round');
+    isFinalist = false;
+    showScreen('screen-register');
   }
 }
 
 function loadRound(idx) {
   if (idx >= rounds.length) { finishQuiz(); return; }
+  sessionStorage.setItem('th_round', idx);
   const r = rounds[idx];
   answered = false;
   $('q-round').textContent = `Ronda ${idx+1} de ${rounds.length}`;
@@ -293,6 +314,7 @@ function selectAnswer(chosen, roundIdx) {
   btns.forEach(b => b.disabled = true);
   const correct = chosen === r.trueIdx;
   if (correct) myScore++;
+  sessionStorage.setItem('th_score', myScore);
   btns[r.trueIdx].classList.add('correct');
   if (!correct) btns[chosen].classList.add('wrong');
   $('q-feedback').textContent = (correct ? '✓ ' : '✗ ') + feedbacks[roundIdx];
@@ -362,6 +384,15 @@ function setupController() {
 }
 
 $('name-input').addEventListener('keydown', e => { if(e.key==='Enter') joinGame(); });
+
+// Auto-rejoin se houver sessão activa (refresh acidental)
+window.addEventListener('load', () => {
+  const saved = sessionStorage.getItem('th_name');
+  if (saved && SUPABASE_URL) {
+    $('name-input').value = saved;
+    setTimeout(joinGame, 300);
+  }
+});
 </script>
 </body>
 </html>

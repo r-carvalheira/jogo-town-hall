@@ -117,7 +117,7 @@ function connect() {
 
   channel
     .on('broadcast', { event: 'join' }, ({ payload }) => {
-      players[payload.id] = { name: payload.name, score: 0 };
+      if (!players[payload.id]) players[payload.id] = { name: payload.name, score: 0 };
       log(`JOIN: ${payload.name}`);
       renderPlayers();
     })
@@ -131,6 +131,7 @@ function connect() {
         $('conn-status').style.color = 'var(--green)';
         log('Ligado ao canal: ' + ROOM);
         ['btn-start-quiz','btn-start-game','btn-reset'].forEach(id => $(id).disabled = false);
+        channel.track({ type: 'admin', phase: 'waiting', finalists: null });
         const playerURL = window.location.href.replace('admin.html','player.html') +
           '#url=' + encodeURIComponent(url) + '&key=' + encodeURIComponent(key);
         const linkEl = $('player-link');
@@ -153,6 +154,7 @@ function sendPhase(phase) {
   }
 
   channel.send({ type:'broadcast', event:'phase', payload });
+  channel.track({ type: 'admin', phase: phase, finalists: payload.finalists || null });
   $('phase-badge').textContent = phase;
   log(`FASE: ${phase}`);
 
