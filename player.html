@@ -75,7 +75,6 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .opt.wrong { border-color: var(--danger); background: #fdecea; }
 .opt.wrong .opt-l { background: var(--danger); border-color: var(--danger); color: #fff; }
 .opt:disabled { cursor: default; }
-.q-feedback { font-size: 0.85rem; text-align: center; color: var(--muted); min-height: 2rem; line-height: 1.4; }
 .score-display {
   text-align: center; font-family: 'DM Mono', monospace; font-size: 0.85rem; color: var(--muted);
 }
@@ -142,7 +141,6 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     <div class="q-text" id="q-text">Qual é a verdadeira?</div>
     <div class="q-label">Escolhe a afirmação verdadeira</div>
     <div class="options" id="options"></div>
-    <div class="q-feedback" id="q-feedback"></div>
     <div class="score-display">Pontos: <span id="score-disp">0</span></div>
   </div>
 </div>
@@ -203,19 +201,15 @@ function showController() {
 
 // ── Rounds data (same as screen)
 const rounds = [
-  { trueIdx:2, options:["O Rodrigo começou a faculdade em 2019.","O Rodrigo fez o secundário numa escola de artes.","O Rodrigo trabalhou como bartender.","O Rodrigo tem um irmão gémeo."] },
-  { trueIdx:0, options:["O Rodrigo deu aulas de guitarra quando estava no 8.º ano.","O Rodrigo chegou a tocar numa banda de covers nos festivais de verão.","O Rodrigo sabe tocar baixo e bateria além de guitarra.","O Rodrigo já gravou um EP num estúdio profissional."] },
-  { trueIdx:1, options:["O Rodrigo já visitou os 5 continentes.","O Rodrigo já esteve em África, nas Américas e na Ásia.","O Rodrigo viveu 6 meses no estrangeiro como nómada digital.","O Rodrigo fez o Interrail sozinho com 17 anos."] },
-  { trueIdx:3, options:["O Rodrigo é vegano há 2 anos.","O Rodrigo pratica surf ao fim de semana.","O Rodrigo tem certificação AWS.","O Rodrigo está na Tuna Universitária da NOVA IMS."] },
-  { trueIdx:0, options:["O Rodrigo bebe café todos os dias.","O Rodrigo nunca bebeu álcool na vida.","O Rodrigo acorda sempre antes das 7h.","O Rodrigo é vegetariano."] },
-  { trueIdx:2, options:["O Rodrigo sabe falar mandarim básico.","O Rodrigo já participou num hackathon internacional.","O Rodrigo está a construir agentes de IA com Copilot Studio e Databricks.","O Rodrigo tem o seu próprio podcast de tecnologia."] }
+  { trueIdx:2, options:["Eu já fiz voluntariado num abrigo de animais.","Eu acordo sempre antes das 7h, mesmo ao fim de semana.","Eu já trabalhei como bartender.","Eu nunca vi um filme da Marvel."] },
+  { trueIdx:0, options:["Eu dei aulas de guitarra quando estava no 8.º ano.","Eu cheguei a tocar numa banda de covers em festivais de verão.","Eu sei tocar baixo e bateria além de guitarra.","Eu sou cinturão negro de Karate."] },
+  { trueIdx:1, options:["Eu já visitei os 5 continentes.","Eu participei na gravação da banda sonora de um videojogo.","Eu vivi 6 meses no estrangeiro, em erasmus.","Eu fiz o Interrail sozinho com 17 anos."] },
+  { trueIdx:3, options:["Faço uma dieta glúten free há 3 anos.","Eu pratico surf ao fim de semana.","Já fui presidente de uma juventude partidária.","Eu andei na escola com o António Silva do Benfica."] },
+  { trueIdx:1, options:["Eu bebo chá todos os dias.","Eu sou dador de sangue.","Eu nunca fui aos EUA.","Eu faço parte de uma claque de futebol."] },
+  { trueIdx:1, options:["Eu sei falar mandarim básico.","Eu já participei num hackathon na Lituânia.","Eu já tive um podcast.","Eu tenho um irmão mais novo."] },
+  { trueIdx:0, options:["Eu não sei nadar.","Sou alérgico a amendoim.","Nunca saí de Viseu até fazer 18 anos.","Todos os anos faço ski no Natal."] }
 ];
 
-const feedbacks = [
-  "Sim, é verdade! Trabalhou como bartender. 🍹","Verdade! Com 13-14 anos já era professor de guitarra. 🎸",
-  "Correto! 3 continentes além da Europa. ✈️","Sim! Membro da Tuna desde 2022. 🎻",
-  "Óbvio! O café é um requisito de funcionamento. ☕","É mesmo! Agentes de IA no dia a dia do estágio. 🤖"
-];
 
 function joinGame() {
   const name = $('name-input').value.trim();
@@ -316,7 +310,6 @@ function loadRound(idx) {
   $('q-round').textContent = `Ronda ${idx+1} de ${rounds.length}`;
   $('q-fill').style.width = `${((idx)/rounds.length)*100}%`;
   $('q-text').textContent = 'Qual destas afirmações é verdadeira?';
-  $('q-feedback').textContent = '';
   $('score-disp').textContent = myScore;
   const labels = ['A','B','C','D'];
   const opts = $('options');
@@ -341,8 +334,6 @@ function selectAnswer(chosen, roundIdx) {
   sessionStorage.setItem('th_score', myScore);
   btns[r.trueIdx].classList.add('correct');
   if (!correct) btns[chosen].classList.add('wrong');
-  $('q-feedback').textContent = (correct ? '✓ ' : '✗ ') + feedbacks[roundIdx];
-  $('q-feedback').style.color = correct ? 'var(--green2)' : 'var(--danger)';
   $('score-disp').textContent = myScore;
   // send score update
   const finished = roundIdx === rounds.length - 1;
