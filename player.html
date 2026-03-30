@@ -38,9 +38,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .wait-icon { font-size: 3rem; }
 .wait-title { font-size: 1.3rem; font-weight: 700; color: var(--green); text-align: center; }
 .wait-name { font-size: 1rem; color: var(--muted); font-family: 'DM Mono', monospace; }
-.wait-anim {
-  display: flex; gap: 6px;
-}
+.wait-anim { display: flex; gap: 6px; }
 .wait-anim span {
   width: 8px; height: 8px; border-radius: 50%; background: var(--green);
   animation: wb 1.2s infinite;
@@ -70,15 +68,22 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   display: flex; align-items: center; justify-content: center;
   font-family: 'DM Mono', monospace; font-size: 0.7rem; color: var(--muted); flex-shrink: 0;
 }
+.opt.selected { border-color: var(--green); background: #e8f4ee; }
+.opt.selected .opt-l { background: var(--green); border-color: var(--green); color: #fff; }
 .opt.correct { border-color: var(--green2); background: #e8f4ee; }
 .opt.correct .opt-l { background: var(--green); border-color: var(--green); color: #fff; }
 .opt.wrong { border-color: var(--danger); background: #fdecea; }
 .opt.wrong .opt-l { background: var(--danger); border-color: var(--danger); color: #fff; }
 .opt:disabled { cursor: default; }
+.opt.dimmed { opacity: 0.4; }
 .score-display {
   text-align: center; font-family: 'DM Mono', monospace; font-size: 0.85rem; color: var(--muted);
 }
 .score-display span { color: var(--green); font-size: 1.1rem; font-weight: 500; }
+.q-wait-msg {
+  text-align: center; font-family: 'DM Mono', monospace; font-size: 0.82rem;
+  color: var(--muted); padding: 1rem 0;
+}
 
 /* ─── NOT FINALIST ─── */
 .nf-score { font-size: 3rem; font-weight: 700; color: var(--green); }
@@ -137,10 +142,11 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 <div class="screen" id="screen-quiz">
   <div class="quiz-wrap">
     <div class="q-progress"><div class="q-fill" id="q-fill" style="width:0%"></div></div>
-    <div class="q-round" id="q-round">Ronda 1 de 6</div>
-    <div class="q-text" id="q-text">Qual é a verdadeira?</div>
-    <div class="q-label">Escolhe a afirmação verdadeira</div>
+    <div class="q-round" id="q-round"></div>
+    <div class="q-text" id="q-text">A aguardar a pergunta...</div>
+    <div class="q-label" id="q-label"></div>
     <div class="options" id="options"></div>
+    <div class="q-wait-msg" id="q-wait-msg"></div>
     <div class="score-display">Pontos: <span id="score-disp">0</span></div>
   </div>
 </div>
@@ -180,7 +186,8 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 }
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-let myId = null, myName = '', myScore = 0, currentRound = 0, answered = false;
+let myId = null, myName = '', myScore = 0, currentRound = 0;
+let answered = false, myChoice = null;
 let isFinalist = false;
 let channel = null;
 
@@ -199,7 +206,6 @@ function showController() {
   $('screen-controller').classList.add('active');
 }
 
-// ── Rounds data (same as screen)
 const rounds = [
   { trueIdx:2, options:["Eu já fiz voluntariado num abrigo de animais.","Eu acordo sempre antes das 7h, mesmo ao fim de semana.","Eu já trabalhei como bartender.","Eu nunca vi um filme da Marvel."] },
   { trueIdx:0, options:["Eu dei aulas de guitarra quando estava no 8.º ano.","Eu cheguei a tocar numa banda de covers em festivais de verão.","Eu sei tocar baixo e bateria além de guitarra.","Eu sou cinturão negro de Karate."] },
@@ -210,11 +216,9 @@ const rounds = [
   { trueIdx:0, options:["Eu não sei nadar.","Sou alérgico a amendoim.","Nunca saí de Viseu até fazer 18 anos.","Todos os anos faço ski no Natal."] }
 ];
 
-
 function joinGame() {
   const name = $('name-input').value.trim();
   if (!name) return;
-  // Restaurar ID da sessão anterior para que o sistema nos reconheça
   myId = sessionStorage.getItem('th_id') || uid();
   myName = name;
   $('join-btn').disabled = true;
@@ -227,13 +231,47 @@ function joinGame() {
     .on('broadcast', { event: 'phase' }, ({ payload }) => {
       handlePhase(payload);
     })
+    .on('broadcast', { event: 'quiz_question' }, ({ payload }) => {
+      currentRound = payload.round;
+      myChoice = null;
+      answered = false;
+      sessionStorage.setItem('th_round', currentRound);
+      if (!$('screen-quiz').classList.contains('active')) showScreen('screen-quiz');
+      loadRound(currentRound);
+    })
+    .on('broadcast', { event: 'quiz_reveal' }, ({ payload }) => {
+      const { round, correct, scores } = payload;
+      if (round !== currentRound) return;
+
+      // Update score authoritatively from screen
+      if (scores && scores[myId] !== undefined) {
+        myScore = scores[myId];
+        sessionStorage.setItem('th_score', myScore);
+        $('score-disp').textContent = myScore;
+      }
+
+      // Show correct/wrong feedback on options
+      const btns = document.querySelectorAll('.opt');
+      btns.forEach(b => { b.classList.remove('dimmed', 'selected'); b.style.opacity = ''; });
+      if (btns[correct]) btns[correct].classList.add('correct');
+      if (myChoice !== null && myChoice !== correct && btns[myChoice]) {
+        btns[myChoice].classList.add('wrong');
+      }
+      // Dim unchosen, unreveled options
+      btns.forEach((b, i) => {
+        if (i !== correct && i !== myChoice) b.classList.add('dimmed');
+      });
+
+      $('q-label').textContent = myChoice === correct ? '✓ Correto!' : myChoice !== null ? '✗ Errado' : '';
+      $('q-label').style.color = myChoice === correct ? 'var(--green)' : 'var(--danger)';
+      $('q-wait-msg').textContent = 'A aguardar a próxima pergunta...';
+    })
     .on('broadcast', { event: 'lap_update' }, ({ payload }) => {
       if (payload.id === myId) $('ctrl-lap').textContent = `Volta ${payload.lap} / 10`;
     })
     .on('presence', { event: 'sync' }, () => {
       const all = Object.values(channel.presenceState()).flat();
 
-      // Primeira sync: verificar se o nome já está em uso
       if (!presenceChecked) {
         presenceChecked = true;
         const nameTaken = all.some(p =>
@@ -254,12 +292,22 @@ function joinGame() {
         }
       }
 
-      // Sincronizar fase atual (útil para quem entra tarde ou volta após refresh)
       const admin = all.find(p => p.type === 'admin');
       if (!admin || admin.phase === 'waiting') return;
       const onPassiveScreen = $('screen-wait').classList.contains('active') ||
                               $('screen-register').classList.contains('active');
-      if (onPassiveScreen) handlePhase({ phase: admin.phase, finalists: admin.finalists });
+      if (onPassiveScreen) {
+        handlePhase({ phase: admin.phase, finalists: admin.finalists });
+        // Restore current round if quiz is active
+        if (admin.phase === 'quiz' && admin.quizRound !== undefined) {
+          setTimeout(() => {
+            if ($('screen-quiz').classList.contains('active')) {
+              currentRound = admin.quizRound;
+              loadRound(currentRound);
+            }
+          }, 400);
+        }
+      }
     })
     .subscribe(() => {
       channel.track({ type: 'player', id: myId, name: myName });
@@ -271,11 +319,16 @@ function joinGame() {
 
 function handlePhase(payload) {
   if (payload.phase === 'quiz') {
-    // Restaurar progresso de sessão anterior (rejoin); 0 para quem entra de novo
     myScore = parseInt(sessionStorage.getItem('th_score') || '0');
     currentRound = parseInt(sessionStorage.getItem('th_round') || '0');
     showScreen('screen-quiz');
-    loadRound(currentRound);
+    $('q-text').textContent = 'A aguardar a pergunta...';
+    $('q-round').textContent = '';
+    $('q-label').textContent = '';
+    $('q-wait-msg').textContent = '';
+    $('options').innerHTML = '';
+    $('score-disp').textContent = myScore;
+    $('q-fill').style.width = '0%';
   } else if (payload.phase === 'quiz_done') {
     const finalistIds = payload.finalists || [];
     isFinalist = finalistIds.includes(myId);
@@ -294,7 +347,6 @@ function handlePhase(payload) {
       setupController();
     }
   } else if (payload.phase === 'waiting') {
-    // Reset completo — limpar sessão de progresso
     sessionStorage.removeItem('th_score');
     sessionStorage.removeItem('th_round');
     isFinalist = false;
@@ -303,13 +355,16 @@ function handlePhase(payload) {
 }
 
 function loadRound(idx) {
-  if (idx >= rounds.length) { finishQuiz(); return; }
-  sessionStorage.setItem('th_round', idx);
+  if (idx >= rounds.length) return;
   const r = rounds[idx];
   answered = false;
-  $('q-round').textContent = `Ronda ${idx+1} de ${rounds.length}`;
-  $('q-fill').style.width = `${((idx)/rounds.length)*100}%`;
+  myChoice = null;
+  $('q-round').textContent = `Pergunta ${idx+1} de ${rounds.length}`;
+  $('q-fill').style.width = `${(idx / rounds.length) * 100}%`;
   $('q-text').textContent = 'Qual destas afirmações é verdadeira?';
+  $('q-label').textContent = 'Escolhe a afirmação verdadeira';
+  $('q-label').style.color = '';
+  $('q-wait-msg').textContent = '';
   $('score-disp').textContent = myScore;
   const labels = ['A','B','C','D'];
   const opts = $('options');
@@ -326,28 +381,19 @@ function loadRound(idx) {
 function selectAnswer(chosen, roundIdx) {
   if (answered) return;
   answered = true;
-  const r = rounds[roundIdx];
+  myChoice = chosen;
   const btns = document.querySelectorAll('.opt');
   btns.forEach(b => b.disabled = true);
-  const correct = chosen === r.trueIdx;
-  if (correct) myScore++;
-  sessionStorage.setItem('th_score', myScore);
-  btns[r.trueIdx].classList.add('correct');
-  if (!correct) btns[chosen].classList.add('wrong');
-  $('score-disp').textContent = myScore;
-  // send score update
-  const finished = roundIdx === rounds.length - 1;
-  channel.send({ type:'broadcast', event:'score', payload:{ id:myId, name:myName, score:myScore, finished } });
-  setTimeout(() => {
-    if (roundIdx < rounds.length - 1) loadRound(roundIdx + 1);
-    else finishQuiz();
-  }, 1800);
-}
 
-function finishQuiz() {
-  $('q-fill').style.width = '100%';
-  // Send final score
-  channel.send({ type:'broadcast', event:'score', payload:{ id:myId, name:myName, score:myScore, finished:true } });
+  // Highlight chosen option, dim others
+  btns[chosen].classList.add('selected');
+  btns.forEach((b, i) => { if (i !== chosen) b.classList.add('dimmed'); });
+
+  $('q-label').textContent = 'Resposta enviada! A aguardar resultados...';
+  $('q-label').style.color = 'var(--muted)';
+
+  // Send vote to screen (screen calculates scores)
+  channel.send({ type:'broadcast', event:'vote', payload:{ id:myId, name:myName, round:roundIdx, chosen } });
 }
 
 // ── BUTTON CONTROLLER
@@ -380,7 +426,6 @@ function setupController() {
   bindBtn('btn-right', 'right');
   bindBtn('btn-boost', 'boost');
 
-  // Boost energy bar
   setInterval(() => {
     if (inputState.boost && boostEnergy > 0) {
       boostEnergy = Math.max(0, boostEnergy - 2.5);
@@ -401,7 +446,6 @@ function setupController() {
 $('name-input').addEventListener('keydown', e => { if(e.key==='Enter') joinGame(); });
 $('name-input').addEventListener('input', () => { $('name-error').textContent = ''; });
 
-// Auto-rejoin se houver sessão activa (refresh acidental)
 window.addEventListener('load', () => {
   const saved = sessionStorage.getItem('th_name');
   if (saved && SUPABASE_URL) {

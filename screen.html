@@ -47,34 +47,70 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 }
 @keyframes popIn { from { opacity:0; transform: scale(0.6); } to { opacity:1; transform: scale(1); } }
 
-/* ───── QUIZ LEADERBOARD ───── */
-#phase-quiz { flex-direction: column; padding: 2rem; gap: 1.5rem; }
-.quiz-header { display: flex; justify-content: space-between; align-items: center; }
-.quiz-header h1 { font-size: 1.4rem; font-weight: 700; color: var(--green); }
-.round-badge {
-  padding: 6px 18px; background: var(--green); color: #fff;
-  border-radius: 999px; font-family: 'DM Mono', monospace; font-size: 0.85rem;
+/* ───── KAHOOT QUIZ ───── */
+#phase-quiz {
+  flex-direction: column; padding: 1.4rem 1.6rem; gap: 0.9rem;
+  background: #1a1a2e;
 }
-.leaderboard { flex: 1; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
-.lb-row {
-  display: flex; align-items: center; gap: 16px;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-  padding: 14px 20px; transition: all 0.4s cubic-bezier(0.34,1.56,0.64,1);
-  animation: slideIn 0.4s cubic-bezier(0.34,1.56,0.64,1);
+.kq-topbar {
+  display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;
 }
-@keyframes slideIn { from { opacity:0; transform: translateX(-20px); } to { opacity:1; transform: none; } }
-.lb-row.top1 { border-color: var(--gold); background: #fffbf0; }
-.lb-rank { font-family: 'DM Mono', monospace; font-size: 1.1rem; font-weight: 500; width: 32px; color: var(--muted); }
-.lb-row.top1 .lb-rank { color: var(--gold); }
-.lb-name { flex: 1; font-weight: 700; font-size: 1.1rem; }
-.lb-score { font-family: 'DM Mono', monospace; font-size: 1.3rem; font-weight: 500; color: var(--green); }
-.lb-bar-wrap { width: 200px; height: 6px; background: var(--surface2); border-radius: 3px; }
-.lb-bar { height: 100%; background: var(--green); border-radius: 3px; transition: width 0.5s ease; }
-.lb-row.top1 .lb-bar { background: var(--gold); }
-.q-status { font-size: 0.9rem; color: var(--muted); font-family: 'DM Mono', monospace; text-align: center; }
-.finalist-banner {
-  background: var(--green); color: #fff; border-radius: 12px; padding: 1rem 1.5rem;
-  text-align: center; font-weight: 700; font-size: 1.1rem; display: none;
+.kq-round-label {
+  font-family: 'DM Mono', monospace; font-size: 0.85rem; color: rgba(255,255,255,0.5);
+}
+.kq-voted-pill {
+  background: rgba(255,255,255,0.12); color: #fff;
+  font-family: 'DM Mono', monospace; font-size: 0.8rem;
+  padding: 4px 14px; border-radius: 999px; transition: background 0.3s;
+}
+.kq-voted-pill.all { background: rgba(52,211,99,0.25); color: #4ade80; }
+.kq-question-card {
+  background: #fff; border-radius: 16px; padding: 1.2rem 1.8rem;
+  font-size: 1.5rem; font-weight: 700; color: #1a2b1f;
+  text-align: center; line-height: 1.35; flex-shrink: 0;
+  min-height: 85px; display: flex; align-items: center; justify-content: center;
+}
+.kq-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; flex: 1; min-height: 0;
+}
+.kq-opt {
+  border-radius: 14px; overflow: hidden; display: flex; flex-direction: column;
+  transition: opacity 0.45s, box-shadow 0.3s;
+}
+.kq-opt-body {
+  flex: 1; display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+}
+.kq-opt-icon { font-size: 1.5rem; flex-shrink: 0; }
+.kq-opt-label { font-size: 0.92rem; font-weight: 600; color: #fff; flex: 1; line-height: 1.3; }
+.kq-opt-pct {
+  font-family: 'DM Mono', monospace; font-size: 1.1rem; font-weight: 700;
+  color: #fff; min-width: 3.5ch; text-align: right; opacity: 0; transition: opacity 0.3s;
+}
+.kq-opt-pct.show { opacity: 1; }
+.kq-opt-bar-row { height: 10px; background: rgba(0,0,0,0.25); flex-shrink: 0; }
+.kq-opt-bar { height: 100%; background: rgba(255,255,255,0.45); transition: width 0.55s ease; }
+.kq-opt[data-i="0"] { background: #d63031; }
+.kq-opt[data-i="1"] { background: #0984e3; }
+.kq-opt[data-i="2"] { background: #e17055; }
+.kq-opt[data-i="3"] { background: #00b894; }
+.kq-opt.dimmed { opacity: 0.22; }
+.kq-opt.correct { box-shadow: 0 0 0 4px #fff, 0 0 0 7px rgba(255,255,255,0.3); }
+.kq-lb {
+  display: flex; flex-direction: row; gap: 8px; flex-shrink: 0; flex-wrap: wrap;
+}
+.kq-lb-row {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,0.1); border-radius: 10px;
+  padding: 6px 12px; flex: 1; min-width: 140px;
+  animation: fadeUp 0.4s cubic-bezier(0.34,1.56,0.64,1);
+}
+@keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+.kq-lb-rank { font-family:'DM Mono',monospace; font-size:0.75rem; color:rgba(255,255,255,0.45); width:20px; }
+.kq-lb-name { flex:1; font-size:0.85rem; font-weight:700; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.kq-lb-score { font-family:'DM Mono',monospace; font-size:0.85rem; color:var(--gold); }
+.kq-hint {
+  text-align: center; font-family: 'DM Mono', monospace; font-size: 0.75rem;
+  color: rgba(255,255,255,0.25); flex-shrink: 0;
 }
 
 /* ───── GAME ───── */
@@ -133,15 +169,16 @@ canvas#game-canvas { width: 100%; height: 100%; display: block; }
   </div>
 </div>
 
-<!-- PHASE: QUIZ LEADERBOARD -->
+<!-- PHASE: QUIZ -->
 <div id="phase-quiz">
-  <div class="quiz-header">
-    <h1>Leaderboard em tempo real</h1>
-    <div class="round-badge" id="round-badge">aguardar...</div>
+  <div class="kq-topbar">
+    <div class="kq-round-label" id="kq-round">Pergunta 1 / 7</div>
+    <div class="kq-voted-pill" id="kq-voted">0 votaram</div>
   </div>
-  <div class="finalist-banner" id="finalist-banner"></div>
-  <div class="leaderboard" id="leaderboard"></div>
-  <div class="q-status" id="q-status">Os jogadores estão a responder...</div>
+  <div class="kq-question-card" id="kq-question">Qual destas afirmações é verdadeira?</div>
+  <div class="kq-grid" id="kq-options"></div>
+  <div class="kq-lb" id="kq-lb" style="display:none"></div>
+  <div class="kq-hint" id="kq-hint">espaço → revelar resposta</div>
 </div>
 
 <!-- PHASE: GAME -->
@@ -179,6 +216,20 @@ let phase = 'waiting';
 let gameState = {};
 let animFrame;
 
+// ── Quiz (Kahoot) state
+const rounds = [
+  { trueIdx:2, options:["Eu já fiz voluntariado num abrigo de animais.","Eu acordo sempre antes das 7h, mesmo ao fim de semana.","Eu já trabalhei como bartender.","Eu nunca vi um filme da Marvel."] },
+  { trueIdx:0, options:["Eu dei aulas de guitarra quando estava no 8.º ano.","Eu cheguei a tocar numa banda de covers em festivais de verão.","Eu sei tocar baixo e bateria além de guitarra.","Eu sou cinturão negro de Karate."] },
+  { trueIdx:1, options:["Eu já visitei os 5 continentes.","Eu participei na gravação da banda sonora de um videojogo.","Eu vivi 6 meses no estrangeiro, em erasmus.","Eu fiz o Interrail sozinho com 17 anos."] },
+  { trueIdx:3, options:["Faço uma dieta glúten free há 3 anos.","Eu pratico surf ao fim de semana.","Já fui presidente de uma juventude partidária.","Eu andei na escola com o António Silva do Benfica."] },
+  { trueIdx:1, options:["Eu bebo chá todos os dias.","Eu sou dador de sangue.","Eu nunca fui aos EUA.","Eu faço parte de uma claque de futebol."] },
+  { trueIdx:1, options:["Eu sei falar mandarim básico.","Eu já participei num hackathon na Lituânia.","Eu já tive um podcast.","Eu tenho um irmão mais novo."] },
+  { trueIdx:0, options:["Eu não sei nadar.","Sou alérgico a amendoim.","Nunca saí de Viseu até fazer 18 anos.","Todos os anos faço ski no Natal."] }
+];
+let quizRound = 0;
+let quizMode = 'question'; // 'question' | 'revealed'
+let votes = {}; // { roundIdx: { playerId: chosenIdx } }
+
 // ── DOM helpers
 const $ = id => document.getElementById(id);
 function showPhase(p) {
@@ -186,9 +237,10 @@ function showPhase(p) {
   ['waiting','quiz','game','podium'].forEach(x => {
     $('phase-'+x).classList.toggle('active-phase', x === p);
   });
+  channel.track({ type: 'admin', phase: p, quizRound, finalists: [] });
 }
 
-// ── Player URL com credenciais no hash (nunca vai ao servidor)
+// ── Player URL
 const playerURL = window.location.href.replace('screen.html','player.html') +
   '#url=' + encodeURIComponent(SUPABASE_URL) + '&key=' + encodeURIComponent(SUPABASE_KEY);
 $('player-url').textContent = playerURL;
@@ -197,26 +249,7 @@ try {
   box.innerHTML = '';
   new QRCode(box, { text: playerURL, width: 160, height: 160, colorDark: '#1a2b1f', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
 } catch(e) {
-  $('qr-display').textContent = playerURL; // fallback: mostra URL em texto
-}
-
-// ── Leaderboard render
-function renderLeaderboard() {
-  const sorted = Object.values(players).sort((a,b) => b.score - a.score);
-  const max = sorted[0]?.score || 1;
-  const lb = $('leaderboard');
-  lb.innerHTML = '';
-  sorted.slice(0,10).forEach((p, i) => {
-    const row = document.createElement('div');
-    row.className = 'lb-row' + (i===0?' top1':'');
-    row.innerHTML = `
-      <div class="lb-rank">#${i+1}</div>
-      <div class="lb-name">${p.name}</div>
-      <div class="lb-bar-wrap"><div class="lb-bar" style="width:${(p.score/max)*100}%"></div></div>
-      <div class="lb-score">${p.score}</div>
-    `;
-    lb.appendChild(row);
-  });
+  $('qr-display').textContent = playerURL;
 }
 
 // ── Waiting: player chips
@@ -232,24 +265,106 @@ function renderWaiting() {
   $('player-count-num').textContent = Object.keys(players).length;
 }
 
+// ── Quiz: show question
+function showQuestion(idx) {
+  quizRound = idx;
+  quizMode = 'question';
+  if (!votes[idx]) votes[idx] = {};
+
+  $('kq-round').textContent = `Pergunta ${idx+1} / ${rounds.length}`;
+  updateVotedPill();
+  $('kq-lb').style.display = 'none';
+  $('kq-hint').textContent = 'espaço → revelar resposta';
+  renderKOptions(idx, false);
+
+  channel.send({ type:'broadcast', event:'quiz_question', payload:{ round: idx } });
+  channel.track({ type: 'admin', phase: 'quiz', quizRound: idx, quizMode: 'question', finalists: [] });
+}
+
+function updateVotedPill() {
+  const total = Object.keys(votes[quizRound] || {}).length;
+  const playerCount = Object.keys(players).length;
+  const pill = $('kq-voted');
+  pill.textContent = `${total} / ${playerCount} votaram`;
+  pill.classList.toggle('all', total > 0 && total >= playerCount);
+}
+
+function renderKOptions(idx, revealed) {
+  const r = rounds[idx];
+  const rv = votes[idx] || {};
+  const total = Object.keys(rv).length;
+  const icons = ['▲', '◆', '●', '■'];
+
+  $('kq-options').innerHTML = '';
+  r.options.forEach((opt, i) => {
+    const cnt = Object.values(rv).filter(v => v === i).length;
+    const pct = total > 0 ? Math.round(cnt / total * 100) : 0;
+    const isCorrect = i === r.trueIdx;
+
+    const div = document.createElement('div');
+    div.className = 'kq-opt' + (revealed ? (isCorrect ? ' correct' : ' dimmed') : '');
+    div.dataset.i = i;
+    div.innerHTML = `
+      <div class="kq-opt-body">
+        <div class="kq-opt-icon">${icons[i]}</div>
+        <div class="kq-opt-label">${opt}</div>
+        <div class="kq-opt-pct${total > 0 ? ' show' : ''}">${total > 0 ? pct + '%' : ''}</div>
+      </div>
+      <div class="kq-opt-bar-row"><div class="kq-opt-bar" style="width:${pct}%"></div></div>
+    `;
+    $('kq-options').appendChild(div);
+  });
+}
+
+function revealAnswer() {
+  quizMode = 'revealed';
+
+  // Update scores from votes
+  const rv = votes[quizRound] || {};
+  const r = rounds[quizRound];
+  Object.entries(rv).forEach(([id, chosen]) => {
+    if (chosen === r.trueIdx && players[id]) players[id].score++;
+  });
+
+  renderKOptions(quizRound, true);
+
+  // Show leaderboard
+  const sorted = Object.values(players).sort((a, b) => b.score - a.score);
+  const lb = $('kq-lb');
+  lb.style.display = 'flex';
+  lb.innerHTML = sorted.slice(0, 5).map((p, i) => `
+    <div class="kq-lb-row">
+      <div class="kq-lb-rank">#${i+1}</div>
+      <div class="kq-lb-name">${p.name}</div>
+      <div class="kq-lb-score">${p.score} pts</div>
+    </div>
+  `).join('');
+
+  const isLast = quizRound === rounds.length - 1;
+  $('kq-hint').textContent = isLast ? 'espaço → iniciar corrida' : 'espaço → próxima pergunta';
+
+  // Tell players the correct answer + updated scores
+  const scores = {};
+  Object.entries(players).forEach(([id, p]) => { scores[id] = p.score; });
+  channel.send({ type:'broadcast', event:'quiz_reveal', payload:{ round: quizRound, correct: r.trueIdx, scores } });
+  channel.track({ type: 'admin', phase: 'quiz', quizRound, quizMode: 'revealed', finalists: [] });
+}
+
 // ── Channel listeners
 channel
   .on('broadcast', { event: 'join' }, ({ payload }) => {
     if (!players[payload.id]) players[payload.id] = { name: payload.name, score: 0, finished: false };
     if (phase === 'waiting') renderWaiting();
-    renderLeaderboard();
   })
-  .on('broadcast', { event: 'score' }, ({ payload }) => {
-    if (players[payload.id]) {
-      players[payload.id].score = payload.score;
-      players[payload.id].finished = payload.finished || false;
-    }
-    renderLeaderboard();
-    const total = Object.keys(players).length;
-    const done = Object.values(players).filter(p => p.finished).length;
-    $('q-status').textContent = `Respondidas: ${done} / ${total}`;
-    if (done === total && total > 0) {
-      showFinalists();
+  .on('broadcast', { event: 'vote' }, ({ payload }) => {
+    const { id, name, round, chosen } = payload;
+    if (!votes[round]) votes[round] = {};
+    votes[round][id] = chosen;
+    if (!players[id]) players[id] = { name, score: 0, finished: false };
+
+    if (round === quizRound && quizMode === 'question') {
+      updateVotedPill();
+      renderKOptions(round, false);
     }
   })
   .on('broadcast', { event: 'input' }, ({ payload }) => {
@@ -262,13 +377,10 @@ channel
     if (phase === 'game') startRace();
   })
   .on('broadcast', { event: 'phase' }, ({ payload }) => {
-    if (payload.phase === 'quiz') {
-      showPhase('quiz');
-    } else if (payload.phase === 'game') {
-      const finalists = payload.finalists;
-      if (finalists && finalists.length) { showPhase('game'); initGame(finalists); }
-    } else if (payload.phase === 'waiting') {
+    if (payload.phase === 'waiting') {
       players = {};
+      votes = {};
+      quizRound = 0;
       showPhase('waiting');
       renderWaiting();
     }
@@ -277,43 +389,25 @@ channel
     leftPresences.filter(p => p.type === 'player').forEach(p => {
       delete players[p.id];
     });
-    renderLeaderboard();
     if (phase === 'waiting') renderWaiting();
+    if (phase === 'quiz') updateVotedPill();
   })
   .on('presence', { event: 'sync' }, () => {
     const all = Object.values(channel.presenceState()).flat();
-    // Restaurar jogadores que já estavam ligados (útil após refresh do screen)
     all.filter(p => p.type === 'player').forEach(p => {
       if (!players[p.id]) players[p.id] = { name: p.name, score: p.score || 0, finished: false };
     });
-    renderLeaderboard();
     if (phase === 'waiting') renderWaiting();
-    // Restaurar fase a partir do estado do admin (útil após refresh)
-    if (phase === 'waiting') {
-      const admin = all.find(p => p.type === 'admin');
-      if (admin && admin.phase === 'quiz') {
-        showPhase('quiz');
-      } else if (admin && admin.phase === 'game') {
-        showPhase('game');
-        if (admin.finalists && admin.finalists.length) initGame(admin.finalists);
-      }
-    }
   })
   .subscribe();
 
 // ── Phase transitions
-function showFinalists() {
-  const sorted = Object.entries(players).sort(([,a],[,b]) => b.score - a.score);
-  const finalists = sorted.slice(0,5).map(([id,p]) => ({ id, name:p.name }));
-  const banner = $('finalist-banner');
-  banner.textContent = '🏁 Finalistas: ' + finalists.map(f=>f.name).join('  ·  ');
-  banner.style.display = 'block';
-  channel.send({ type:'broadcast', event:'phase', payload:{ phase:'quiz_done', finalists: finalists.map(f=>f.id) } });
-}
-
 function startGame() {
   const sorted = Object.entries(players).sort(([,a],[,b]) => b.score - a.score);
   const finalists = sorted.slice(0,5).map(([id,p]) => ({ id, name:p.name }));
+  // Notify non-finalists
+  channel.send({ type:'broadcast', event:'phase', payload:{ phase:'quiz_done', finalists: finalists.map(f=>f.id) } });
+  // Notify finalists and start game
   showPhase('game');
   channel.send({ type:'broadcast', event:'phase', payload:{ phase:'game', finalists } });
   initGame(finalists);
@@ -323,10 +417,19 @@ function startGame() {
 document.addEventListener('keydown', e => {
   if (e.code === 'Space') {
     e.preventDefault();
-    if (phase === 'waiting') { showPhase('quiz'); channel.send({type:'broadcast',event:'phase',payload:{phase:'quiz'}}); }
-    else if (phase === 'quiz') startGame();
-    else if (phase === 'game' && !gameState.raceStarted) startRace();
-    else if (phase === 'game' && gameState.raceStarted) endGame();
+    if (phase === 'waiting') {
+      showPhase('quiz');
+      showQuestion(0);
+    } else if (phase === 'quiz' && quizMode === 'question') {
+      revealAnswer();
+    } else if (phase === 'quiz' && quizMode === 'revealed') {
+      if (quizRound < rounds.length - 1) showQuestion(quizRound + 1);
+      else startGame();
+    } else if (phase === 'game' && !gameState.raceStarted) {
+      startRace();
+    } else if (phase === 'game' && gameState.raceStarted) {
+      endGame();
+    }
   }
 });
 
@@ -357,24 +460,22 @@ function initGame(finalists) {
   const W = () => canvas.offsetWidth;
   const H = () => canvas.offsetHeight;
 
-  const CAR_W = 13, CAR_H = 24;   // half-dimensions → car is 26×48 px
+  const CAR_W = 13, CAR_H = 24;
   const COLL_R   = 30;
   const TURN_RATE = 0.038;
   const MAX_SPD   = 3.2;
   const BOOST_SPD = 5.5;
   const ACCEL     = 0.10;
 
-  // Track geometry (recomputed each frame so it survives canvas resizes)
   function tg() {
     const w = W(), h = H();
     const cx = w / 2, cy = h / 2;
-    const sl = w * 0.27;                          // half-length of straights
-    const R  = Math.min(h * 0.32, w * 0.20, 200); // curve radius
-    const hw = Math.min(52, R * 0.55);            // track half-width
+    const sl = w * 0.27;
+    const R  = Math.min(h * 0.32, w * 0.20, 200);
+    const hw = Math.min(52, R * 0.55);
     return { cx, cy, sl, R, hw, lx: cx - sl, rx: cx + sl };
   }
 
-  // Distance from (px,py) to the oval centerline (capsule at radius R from foci)
   function distCL(px, py, g) {
     const { cy, R, lx, rx } = g;
     if (px >= lx && px <= rx) {
@@ -386,14 +487,13 @@ function initGame(finalists) {
     }
   }
 
-  // Nearest point on centerline + clockwise tangent direction
   function nearestCL(px, py, g) {
     const { cy, R, lx, rx } = g;
     if (px >= lx && px <= rx) {
       if (Math.abs(py - (cy - R)) < Math.abs(py - (cy + R))) {
-        return { nx: px, ny: cy - R, tx: -1, ty: 0 };   // top straight → going left
+        return { nx: px, ny: cy - R, tx: -1, ty: 0 };
       } else {
-        return { nx: px, ny: cy + R, tx:  1, ty: 0 };   // bottom straight → going right
+        return { nx: px, ny: cy + R, tx:  1, ty: 0 };
       }
     } else if (px > rx) {
       const a = Math.atan2(py - cy, px - rx);
@@ -406,7 +506,6 @@ function initGame(finalists) {
     }
   }
 
-  // Draw a stadium/capsule path
   function capsule(lx, rx, cy, r) {
     ctx.beginPath();
     ctx.moveTo(lx, cy - r);
@@ -417,7 +516,6 @@ function initGame(finalists) {
     ctx.closePath();
   }
 
-  // Initial car positions: grid on the bottom straight, to the right of the finish line
   const g0 = tg();
   const n = finalists.length;
   const spacing = Math.min(CAR_H * 2 + 10, g0.sl * 0.55 / Math.max(n - 1, 1));
@@ -426,7 +524,7 @@ function initGame(finalists) {
     return {
       id: p.id, name: p.name, color: COLORS[i % COLORS.length],
       x, y: g0.cy + g0.R,
-      heading: 0,   // pointing right (clockwise direction on bottom straight)
+      heading: 0,
       speed: 0,
       steerLeft: false, steerRight: false, boost: false,
       lapsDone: 0, prevX: x,
@@ -437,7 +535,6 @@ function initGame(finalists) {
   gameState.finishOrder = [];
   gameState.ended = false;
 
-  // HUD
   const hud = $('game-hud');
   hud.innerHTML = finalists.map((p, i) => `
     <div class="hud-card">
@@ -461,19 +558,15 @@ function initGame(finalists) {
     ctx.fillStyle = '#0d1a0f';
     ctx.fillRect(0, 0, w, h);
 
-    // Outer grass ring
     capsule(lx, rx, cy, R + hw + 20);
     ctx.fillStyle = '#0a160b'; ctx.fill();
 
-    // Track surface
     capsule(lx, rx, cy, R + hw);
     ctx.fillStyle = '#2c3e30'; ctx.fill();
 
-    // Inner grass cutout
     capsule(lx, rx, cy, R - hw);
     ctx.fillStyle = '#0d1a0f'; ctx.fill();
 
-    // Centerline dashes
     ctx.save();
     ctx.setLineDash([14, 12]);
     ctx.lineWidth = 2;
@@ -481,14 +574,12 @@ function initGame(finalists) {
     capsule(lx, rx, cy, R); ctx.stroke();
     ctx.restore();
 
-    // Track borders
     for (const r of [R + hw, R - hw]) {
       capsule(lx, rx, cy, r);
       ctx.strokeStyle = 'rgba(255,255,255,0.3)';
       ctx.lineWidth = 3; ctx.stroke();
     }
 
-    // Checkered start/finish stripe at x=cx, bottom straight
     const sfTop = cy + R - hw + 2, sfBot = cy + R + hw - 2, sqSz = 8, cols = 3;
     for (let col = 0; col < cols; col++) {
       for (let j = 0; j * sqSz < sfBot - sfTop; j++) {
@@ -497,7 +588,6 @@ function initGame(finalists) {
       }
     }
 
-    // Center leaderboard
     const sorted = [...gameState.cars].sort((a, b) =>
       b.lapsDone !== a.lapsDone ? b.lapsDone - a.lapsDone : 0
     );
@@ -511,25 +601,20 @@ function initGame(finalists) {
       ctx.fillText(`${i + 1}. ${car.name}  ${car.lapsDone}/${TOTAL_LAPS}`, cx, y);
     });
 
-    // ── Physics
     if (gameState.raceStarted) {
       gameState.cars.forEach(car => {
         if (car.finished) return;
 
-        // Steering
         if (car.steerLeft)  car.heading -= TURN_RATE;
         if (car.steerRight) car.heading += TURN_RATE;
 
-        // Speed (reduced off-track)
         const onTrack = distCL(car.x, car.y, g) <= hw;
         const targetSpd = (car.boost ? BOOST_SPD : MAX_SPD) * (onTrack ? 1 : 0.35);
         car.speed += (targetSpd - car.speed) * ACCEL;
 
-        // Move
         car.x += Math.cos(car.heading) * car.speed;
         car.y += Math.sin(car.heading) * car.speed;
 
-        // Off-track: pull back + nudge heading toward track tangent
         const d2 = distCL(car.x, car.y, g);
         if (d2 > hw) {
           const cl = nearestCL(car.x, car.y, g);
@@ -539,7 +624,6 @@ function initGame(finalists) {
           car.heading += angleDiff(Math.atan2(cl.ty, cl.tx), car.heading) * 0.06;
         }
 
-        // Lap counter: cross x=cx going right while on bottom straight
         if (Math.abs(car.y - (cy + R)) < hw && car.prevX < cx && car.x >= cx) {
           car.lapsDone++;
           const el = $(`hud-lap-${car.id}`);
@@ -555,7 +639,6 @@ function initGame(finalists) {
         car.prevX = car.x;
       });
 
-      // Car-to-car collisions (circle push-apart)
       const active = gameState.cars.filter(c => !c.finished);
       for (let i = 0; i < active.length; i++) {
         for (let j = i + 1; j < active.length; j++) {
@@ -572,25 +655,20 @@ function initGame(finalists) {
       }
     }
 
-    // ── Draw cars
     gameState.cars.forEach(car => {
       ctx.save();
       ctx.translate(car.x, car.y);
-      ctx.rotate(car.heading + Math.PI / 2);  // heading 0 = right → rotate so car faces up
+      ctx.rotate(car.heading + Math.PI / 2);
 
-      // Shadow
       ctx.fillStyle = 'rgba(0,0,0,0.4)';
       ctx.fillRect(-CAR_W - 2, -CAR_H - 2, (CAR_W + 2) * 2, (CAR_H + 2) * 2);
 
-      // Body
       ctx.fillStyle = car.finished ? '#444' : car.color;
       ctx.fillRect(-CAR_W, -CAR_H, CAR_W * 2, CAR_H * 2);
 
-      // Windshield
       ctx.fillStyle = 'rgba(180,220,255,0.6)';
       ctx.fillRect(-CAR_W + 3, -CAR_H + 4, (CAR_W - 3) * 2, 8);
 
-      // Boost flame
       if (car.boost && !car.finished) {
         ctx.fillStyle = 'rgba(255,160,0,0.85)';
         ctx.fillRect(-5, CAR_H, 10, 10);
@@ -598,7 +676,6 @@ function initGame(finalists) {
 
       ctx.restore();
 
-      // Name label above car
       ctx.save();
       ctx.translate(car.x, car.y);
       ctx.textAlign = 'center';
@@ -611,7 +688,6 @@ function initGame(finalists) {
       ctx.restore();
     });
 
-    // All finished?
     if (gameState.raceStarted && gameState.cars.every(c => c.finished) && !gameState.ended) {
       gameState.ended = true;
       setTimeout(showPodium, 2000);
@@ -668,7 +744,6 @@ function showPodium() {
   ` : '').join('');
 }
 
-// init waiting phase display
 renderWaiting();
 </script>
 </body>
